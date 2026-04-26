@@ -1,0 +1,12 @@
+{
+  "name": "dashbot-proxy",
+  "version": "1.0.0",
+  "description": "Dashbot Proxy Server — MT5 para Web",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
