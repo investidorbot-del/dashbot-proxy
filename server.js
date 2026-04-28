@@ -158,22 +158,22 @@ function adminAuth(req){
 // ─────────────────────────────────────────────────────────────────
 
 http.createServer(async (req, res) => {
-  const parsed = new URL(req.url,'http://localhost');
-  const path   = parsed.pathname;
-  const method = req.method.toUpperCase();
-  const qs     = parsed.searchParams;
+  const parsed  = new URL(req.url,'http://localhost');
+  const reqPath = parsed.pathname;
+  const method  = req.method.toUpperCase();
+  const qs      = parsed.searchParams;
 
   if(method==='OPTIONS'){ res.writeHead(204,CORS); res.end(); return; }
 
   // Health check para o Render
-  if(path==='/health'||path==='/ping'){
+  if(reqPath==='/health'||reqPath==='/ping'){
     sendJSON(res,200,{status:'ok','service':'Dashbot Server v3',ts:Date.now()});
     return;
   }
 
   // Serve o dashboard web
-  if(path==='/'||path==='/dashbot'||path==='/dashbot/'){
-    const htmlPath = path_mod.join(__dirname,'dashbot_web.html');
+  if(reqPath==='/'||reqPath==='/dashbot'||reqPath==='/dashbot/'){
+    const htmlPath = path.join(__dirname,'dashbot_web.html');
     if(fs.existsSync(htmlPath)){
       res.writeHead(200,{...CORS,'Content-Type':'text/html;charset=utf-8'});
       res.end(fs.readFileSync(htmlPath));
@@ -184,7 +184,7 @@ http.createServer(async (req, res) => {
   }
 
   // /validate — EA valida licença
-  if(path==='/validate'){
+  if(reqPath==='/validate'){
     const account = qs.get('account')||'';
     const lics = await getLics();
     const now  = Date.now();
@@ -201,7 +201,7 @@ http.createServer(async (req, res) => {
   }
 
   // /auth/mt5-link — EA abre link de primeiro acesso
-  if(path==='/auth/mt5-link' && method==='POST'){
+  if(reqPath==='/auth/mt5-link' && method==='POST'){
     const token=qs.get('token')||'';
     if(token!==PROXY_TOKEN){sendJSON(res,401,{error:'Token inválido'});return;}
     const body=await readBody(req);
@@ -221,7 +221,7 @@ http.createServer(async (req, res) => {
   }
 
   // /auth/setup-password — cadastra senha no primeiro acesso
-  if(path==='/auth/setup-password' && method==='POST'){
+  if(reqPath==='/auth/setup-password' && method==='POST'){
     const body=await readBody(req);
     let data; try{data=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
     const {setupToken,password}=data;
@@ -246,7 +246,7 @@ http.createServer(async (req, res) => {
   }
 
   // /auth/login — login com conta+senha
-  if(path==='/auth/login' && method==='POST'){
+  if(reqPath==='/auth/login' && method==='POST'){
     const body=await readBody(req);
     let data; try{data=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
     const {account,password}=data;
@@ -264,7 +264,7 @@ http.createServer(async (req, res) => {
   }
 
   // /auth/verify — verifica sessão
-  if(path==='/auth/verify'){
+  if(reqPath==='/auth/verify'){
     const tok=qs.get('token')||req.headers['x-auth-token']||'';
     const sess=await verifySession(tok);
     if(!sess){sendJSON(res,401,{error:'Sessão inválida'});return;}
@@ -274,7 +274,7 @@ http.createServer(async (req, res) => {
   }
 
   // /data — dados do dashboard
-  if(path==='/data'){
+  if(reqPath==='/data'){
     const tok=qs.get('token')||req.headers['x-auth-token']||'';
     if(tok!==PROXY_TOKEN){
       const sess=await verifySession(tok);
@@ -291,7 +291,7 @@ http.createServer(async (req, res) => {
   }
 
   // /update — EA envia dados
-  if(path==='/update' && method==='POST'){
+  if(reqPath==='/update' && method==='POST'){
     const tok=qs.get('token')||'';
     if(tok!==PROXY_TOKEN){sendJSON(res,401,{error:'Não autorizado'});return;}
     const body=await readBody(req);
@@ -304,7 +304,7 @@ http.createServer(async (req, res) => {
   }
 
   // /command — comandos EA/Web
-  if(path==='/command'){
+  if(reqPath==='/command'){
     const tok=qs.get('token')||req.headers['x-auth-token']||'';
     if(tok!==PROXY_TOKEN){
       const sess=await verifySession(tok);
@@ -331,12 +331,12 @@ http.createServer(async (req, res) => {
   }
 
   // /admin — painel admin
-  if(path.startsWith('/admin')){
+  if(reqPath.startsWith('/admin')){
     if(!adminAuth(req)){
       res.writeHead(401,{'WWW-Authenticate':'Basic realm="Dashbot Admin"',...CORS});
       res.end('Não autorizado'); return;
     }
-    if((path==='/admin'||path==='/admin/')&&method==='GET'){
+    if((path==='/admin'||reqPath==='/admin/')&&method==='GET'){
       const lics=await getLics(); const db=await getAuth();
       const now=Date.now();
       let rows=''; let stats={total:0,premium:0,trial:0,expired:0,active:0};
@@ -370,7 +370,7 @@ http.createServer(async (req, res) => {
       sendHTML(res,buildAdminHTML(rows,stats,prodRows));
       return;
     }
-    if(path==='/admin/license'&&method==='POST'){
+    if(reqPath==='/admin/license'&&method==='POST'){
       const body=await readBody(req);
       let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
       const lics=await getLics(); const now=Date.now(); const key=String(d.account);
@@ -383,7 +383,7 @@ http.createServer(async (req, res) => {
       sendJSON(res,ok?200:500,{ok,expiresStr:ptDate(lics[key].premiumEnd)});
       return;
     }
-    if(path==='/admin/license'&&method==='DELETE'){
+    if(reqPath==='/admin/license'&&method==='DELETE'){
       const body=await readBody(req);
       let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
       const lics=await getLics();
@@ -391,7 +391,7 @@ http.createServer(async (req, res) => {
       sendJSON(res,await saveLics(lics)?200:500,{ok:true});
       return;
     }
-    if(path==='/admin/manual'&&method==='POST'){
+    if(reqPath==='/admin/manual'&&method==='POST'){
       const body=await readBody(req);
       let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
       const lics=await getLics(); const now=Date.now(); const key=String(d.account);
@@ -411,7 +411,7 @@ http.createServer(async (req, res) => {
       sendJSON(res,ok?200:500,{ok,expiresStr:ptDate(end)});
       return;
     }
-    if(path==='/admin/reset-password'&&method==='POST'){
+    if(reqPath==='/admin/reset-password'&&method==='POST'){
       const body=await readBody(req);
       let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
       const db=await getAuth();
@@ -421,7 +421,7 @@ http.createServer(async (req, res) => {
       sendJSON(res,await saveAuth(db)?200:500,{ok:true});
       return;
     }
-    if(path==='/admin/products'){
+    if(reqPath==='/admin/products'){
       const lics=await getLics();
       if(method==='GET'){sendJSON(res,200,{products:lics._products||[]});return;}
       if(method==='POST'){
