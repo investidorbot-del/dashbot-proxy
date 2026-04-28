@@ -508,6 +508,11 @@ const EA_COLORS = [
 ];
 
 // ─── FETCH ───────────────────────────────────────────────────────
+var _offlineCount = 0;
+var _lastDataTs   = 0;
+var _OFFLINE_THRESHOLD = 3;    // falhas consecutivas
+var _OFFLINE_TIMEOUT_MS = 60000; // 60s sem dados válidos
+
 function fetchData() {
   var tok = authState.sessionToken || CONFIG.authToken;
   var url = CONFIG.proxyUrl + '/data?token=' + tok;
@@ -518,25 +523,34 @@ function fetchData() {
     if (xhr.status >= 200 && xhr.status < 300) {
       try {
         var d = JSON.parse(xhr.responseText);
+        if(d.offline) {
+          _offlineCount++;
+          // Só mostra offline após 3 falhas consecutivas OU 60s sem dados
+          var timeSinceLast = _lastDataTs ? (Date.now() - _lastDataTs) : 9999999;
+          if(_offlineCount >= _OFFLINE_THRESHOLD || timeSinceLast > _OFFLINE_TIMEOUT_MS) {
+            showOfflineMessage(d.msg||'MT5 desconectado. Abra o Dashbot no MetaTrader 5.');
+          }
+          // Mantém último render visível
+          return;
+        }
+        // Dados válidos recebidos
+        _offlineCount = 0;
+        _lastDataTs = Date.now();
+        hideOfflineMessage();
         state.data = d;
         state.isPremium = d.premium === true;
-        updateStatus(!d.offline, d.ts);
-        if(d.offline) {
-          showOfflineMessage(d.msg||'MT5 desconectado. Abra o Dashbot no MetaTrader 5.');
-        } else {
-          hideOfflineMessage();
-          render();
-        }
+        updateStatus(true, d.ts);
+        render();
       } catch(e) { updateStatus(false, null); }
     } else if(xhr.status === 401) {
-      // Sessão expirada — volta para login
       logout();
     } else {
+      _offlineCount++;
       updateStatus(false, null);
     }
   };
-  xhr.onerror = function() { updateStatus(false, null); };
-  xhr.ontimeout = function() { updateStatus(false, null); };
+  xhr.onerror   = function() { _offlineCount++; updateStatus(false, null); };
+  xhr.ontimeout = function() { _offlineCount++; updateStatus(false, null); };
   xhr.send();
 }
 
