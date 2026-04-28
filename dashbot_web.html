@@ -287,7 +287,7 @@ function showLoginScreen(opts) {
     document.body.appendChild(screen);
   }
   var isSetup = !!opts.setupToken;
-  var logoB64 = document.querySelector('img[alt="iBot"]') ?
+  var preAccount = opts.account || accountURL || '';
     document.querySelector('img[alt="iBot"]').src : '';
   screen.innerHTML = '<div style="background:#0f1120;border:1px solid #1e2438;border-radius:16px;padding:32px;max-width:380px;width:100%;text-align:center">' +
     '<div style="width:64px;height:64px;margin:0 auto 16px;background:#0d1f3c;border-radius:12px;display:flex;align-items:center;justify-content:center">' +
@@ -297,8 +297,8 @@ function showLoginScreen(opts) {
     (opts.msg?'<div id="authMsg" style="background:#2d1117;border:1px solid #ef4444;color:#ef4444;padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:14px">'+opts.msg+'</div>':'')+
     '<div style="text-align:left;margin-bottom:12px">'+
     '<label style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px">Conta MT5</label>'+
-    '<input id="authAccount" type="number" placeholder="Número da sua conta" value="'+(accountURL||'')+'" '+(isSetup?'readonly style="opacity:.6"':'')+
-    ' style="width:100%;background:#08080f;border:1px solid #1e2438;color:#e8ecf4;padding:10px 12px;border-radius:8px;font-size:14px">'+
+    '<input id="authAccount" type="number" placeholder="Número da sua conta" value="'+preAccount+'" '+(isSetup?'readonly ':'')+
+    'style="width:100%;background:#08080f;border:1px solid #1e2438;color:#e8ecf4;padding:10px 12px;border-radius:8px;font-size:14px;'+(isSetup?'opacity:.7':'')+'">'+ 
     '</div>'+
     (isSetup?
       '<div style="text-align:left;margin-bottom:12px">'+
@@ -402,31 +402,27 @@ function startDashboard() {
 
 // ─── INICIALIZAÇÃO ───────────────────────────────────────────────
 window.addEventListener('load', function() {
-  // Primeiro acesso via MT5 — tem setupToken na URL
+  // Primeiro acesso via MT5 com setupToken — cadastra senha
   if(setupTokenURL && accountURL) {
     showLoginScreen({setupToken:setupTokenURL, account:accountURL});
     return;
   }
-  // Tem sessão salva — verifica se ainda é válida
+  // Tem sessão salva válida — entra direto
   if(authState.sessionToken) {
     var xhr = new XMLHttpRequest();
     xhr.open('GET', CONFIG.proxyUrl+'/auth/verify?token='+authState.sessionToken, true);
     xhr.onload = function() {
       try {
         var r = JSON.parse(xhr.responseText);
-        if(r.ok) {
-          authState.plan = r.plan;
-          hideAuthScreen();
-          startDashboard();
-        } else {
-          showLoginScreen({msg:'Sessão expirada. Faça login novamente.'});
-        }
-      } catch(e){ showLoginScreen(); }
+        if(r.ok) { authState.plan=r.plan; hideAuthScreen(); startDashboard(); }
+        else { showLoginScreen({account:accountURL||'', msg:'Sessão expirada. Faça login novamente.'}); }
+      } catch(e){ showLoginScreen({account:accountURL||''}); }
     };
-    xhr.onerror = function(){ showLoginScreen(); };
+    xhr.onerror = function(){ showLoginScreen({account:accountURL||''}); };
     xhr.send();
   } else {
-    showLoginScreen();
+    // Sem sessão — mostra login com conta pré-preenchida se veio da URL
+    showLoginScreen({account:accountURL||''});
   }
 });
 
