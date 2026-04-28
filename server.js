@@ -193,11 +193,17 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // Serve o dashboard web
+  // Serve o dashboard web — sem cache para garantir versão atualizada
   if(reqPath==='/'||reqPath==='/dashbot'||reqPath==='/dashbot/'){
     const htmlPath = path.join(__dirname,'dashbot_web.html');
     if(fs.existsSync(htmlPath)){
-      res.writeHead(200,{...CORS,'Content-Type':'text/html;charset=utf-8'});
+      res.writeHead(200,{
+        ...CORS,
+        'Content-Type':'text/html;charset=utf-8',
+        'Cache-Control':'no-store, no-cache, must-revalidate',
+        'Pragma':'no-cache',
+        'Expires':'0'
+      });
       res.end(fs.readFileSync(htmlPath));
     } else {
       sendJSON(res,404,{error:'dashbot_web.html not found on server'});
