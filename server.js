@@ -372,13 +372,17 @@ http.createServer(async (req, res) => {
     const body=await readBody(req);
     let payload;
     try{payload=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-    const account=payload.account||qs.get('account')||null;
+    const account=String(payload.account||qs.get('account')||'');
     return new Promise(resolve=>{
       if(account){
-        // Formato novo: salva indexado por conta
+        // Lê dados atuais, mescla e salva
         jbReq('GET',DATA_BIN,null,(err,code,rawData)=>{
           let all={};
-          if(!err&&code===200) try{all=JSON.parse(rawData);}catch(e){}
+          if(!err&&code===200){
+            try{all=JSON.parse(rawData);}catch(e){all={};}
+          }
+          // Garante que all é objeto e não tem formato antigo misturado
+          if(typeof all!=='object'||Array.isArray(all)||all.eas){all={};}
           all[account]=payload;
           jbReq('PUT',DATA_BIN,all,(err2,code2)=>{
             sendJSON(res,!err2&&code2===200?200:500,{ok:!err2&&code2===200});
@@ -386,7 +390,7 @@ http.createServer(async (req, res) => {
           });
         });
       } else {
-        // Formato antigo: salva direto (compatibilidade)
+        // Sem account — salva direto (compatibilidade)
         jbReq('PUT',DATA_BIN,payload,(err,code)=>{
           sendJSON(res,err||code!==200?500:200,{ok:!err&&code===200});
           resolve();
