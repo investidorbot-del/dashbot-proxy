@@ -1,1198 +1,664 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="format-detection" content="telephone=no">
-<title>Dashbot — InvestidorBot</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<style>
-/* ─── Reset & Base ─── */
-*{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:       #08080f;
-  --bg2:      #0d0f1a;
-  --bg3:      #131624;
-  --card:     #0f1120;
-  --bdr:      #1e2438;
-  --sep:      #1a1f35;
-  --txt:      #e8ecf4;
-  --muted:    #8892b0;
-  --dim:      #4a5272;
-  --blue:     #288cff;
-  --blue2:    #0f3270;
-  --green:    #2dd46a;
-  --green2:   #0a3d1e;
-  --red:      #e03333;
-  --red2:     #3d0d0d;
-  --yellow:   #f0b820;
-  --yellow2:  #3d2e06;
-  --radius:   10px;
-  --font:     'Inter', system-ui, sans-serif;
-  --mono:     'JetBrains Mono', monospace;
+// ─────────────────────────────────────────────────────────────────
+//  Dashbot Server v3 — Auth + Licenças + Produtos
+//  Deploy: https://render.com
+// ─────────────────────────────────────────────────────────────────
+const https  = require('https');
+const http   = require('http');
+const crypto = require('crypto');
+const fs     = require('fs');
+const path   = require('path');
+
+const PORT        = process.env.PORT               || 3000;
+const MASTER_KEY  = process.env.JSONBIN_MASTER_KEY || '';
+const DATA_BIN    = process.env.JSONBIN_DATA_BIN   || '';
+const CMD_BIN     = process.env.JSONBIN_CMD_BIN    || '';
+const LICENSE_BIN = process.env.JSONBIN_LICENSE_BIN|| '';
+const AUTH_BIN    = process.env.JSONBIN_AUTH_BIN   || '';
+const PROXY_TOKEN = process.env.DASHBOT_TOKEN      || 'dashbot2024';
+const ADMIN_USER  = process.env.ADMIN_USER         || 'admin';
+const ADMIN_PASS  = process.env.ADMIN_PASS         || 'admin123';
+
+const TRIAL_DAYS  = 14;
+const DAY_MS      = 86400000;
+
+// ── Cache ─────────────────────────────────────────────────────────
+let licenseCache = {}; let lastLicLoad = 0;
+let authCache    = {}; let lastAuthLoad = 0;
+const CACHE_TTL  = 20000;
+
+function hashPw(pw) {
+  return crypto.createHash('sha256').update(pw+'dashbot_salt_2024').digest('hex');
 }
-body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:100vh;overflow-x:hidden}
-
-/* Filtros de período */
-.period-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
-.pf-btn{padding:5px 14px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid var(--bdr);background:var(--bg3);color:var(--muted);transition:all .2s;letter-spacing:.05em}
-.pf-btn.active{background:var(--blue2);border-color:var(--blue);color:var(--blue)}
-.pf-btn:hover:not(.active){border-color:var(--blue);color:var(--txt)}
-
-/* Tooltip Premium para usuários Free */
-.free-lock{position:relative;cursor:not-allowed}
-.free-lock::after{
-  content:'🔒 Exclusivo para assinantes Premium';
-  position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
-  background:#0a0c18;border:1px solid var(--blue);color:var(--txt);
-  font-size:11px;font-weight:600;padding:6px 12px;border-radius:8px;
-  white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .2s;z-index:100;
-  box-shadow:0 4px 20px rgba(40,140,255,.3)
+function genToken(account) {
+  return crypto.createHash('sha256')
+    .update(account+'_'+Date.now()+'_'+Math.random()).digest('hex');
 }
-.free-lock:hover::after{opacity:1}
-.free-lock .btn-g,.free-lock .btn-ea{pointer-events:none;opacity:.35}
-
-/* Títulos dos cards — Inter */
-.card-heading{font-family:'Inter',sans-serif;font-weight:800;font-size:13px;letter-spacing:.02em}
-.gp-title{font-family:'Inter',sans-serif;font-weight:900;font-size:14px;letter-spacing:.03em;color:var(--blue)}
-.ea-name{font-family:'Inter',sans-serif;font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:100vh;overflow-x:hidden}
-
-/* ─── Layout ─── */
-.app{display:-webkit-flex;display:flex;-webkit-flex-direction:column;flex-direction:column;min-height:100vh;min-height:-webkit-fill-available}
-.header{background:var(--bg2);border-bottom:1px solid var(--bdr);padding:12px 20px;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:space-between;justify-content:space-between;position:sticky;top:0;z-index:100}
-.logo{display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;gap:10px}
-.logo-icon{width:36px;height:36px;background:transparent;border:none;border-radius:8px;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;font-size:18px}
-.logo-text{font-size:20px;font-weight:800;letter-spacing:.02em}
-.logo-text span{color:var(--blue)}
-.header-right{display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;gap:12px}
-.badge-plan{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid var(--blue);color:var(--blue);background:var(--blue2);letter-spacing:.06em}
-.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);-webkit-animation:pulse 2s infinite;animation:pulse 2s infinite}
-.status-txt{font-size:11px;color:var(--muted);font-family:var(--mono)}
-@-webkit-keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-
-.main{padding:16px;display:-webkit-flex;display:flex;-webkit-flex-direction:column;flex-direction:column;gap:16px;-webkit-flex:1;flex:1}
-
-/* ─── Stats Bar ─── */
-.stats-bar{display:grid;grid-template-columns:repeat(4,1fr) auto auto;gap:8px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--radius);padding:12px 16px;align-items:center}
-.stat-item{display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--sep);padding-right:16px}
-.stat-item:last-of-type{border-right:none}
-.stat-label{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.06em;text-transform:uppercase}
-.stat-value{font-size:18px;font-weight:800;font-family:var(--mono)}
-.stat-sub{font-size:11px;color:var(--muted)}
-
-/* Roscas */
-.donuts{display:flex;gap:24px;padding-left:16px}
-.donut-wrap{display:flex;flex-direction:column;align-items:center;gap:4px}
-.donut-label-top{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.05em;text-transform:uppercase;text-align:center}
-.donut-canvas-wrap{position:relative}
-.donut-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;font-family:var(--mono)}
-.donut-legend{display:flex;gap:8px;font-size:10px;color:var(--muted)}
-.donut-legend span{display:flex;align-items:center;gap:3px}
-.donut-legend span::before{content:'';width:6px;height:6px;border-radius:50%;display:inline-block}
-.leg-blue::before{background:var(--blue)}
-.leg-red::before{background:var(--red)}
-
-/* ─── Grid de Cards ─── */
-.section-title{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
-
-.global-cards{display:grid;grid-template-columns:220px 1fr;gap:12px}
-
-/* Painel Global */
-.global-panel{background:var(--card);border:1.5px solid var(--blue);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:10px;position:relative;overflow:hidden}
-.global-panel::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--blue),#00c8ff)}
-.gp-title{font-size:13px;font-weight:800;color:var(--blue);letter-spacing:.04em}
-.gp-sub{font-size:10px;color:var(--muted)}
-.metric-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0}
-.metric-row .mlbl{color:var(--muted);font-size:10px;font-weight:600;letter-spacing:.05em}
-.metric-row .mval{font-weight:700;font-family:var(--mono);font-size:12px}
-.gp-sep{border:none;border-top:1px solid var(--sep);margin:4px 0}
-.rent-big{font-size:22px;font-weight:800;font-family:var(--mono);text-align:right}
-.meta-stop{display:flex;flex-direction:column;gap:6px}
-.ms-label{font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
-.ms-input{background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);font-family:var(--mono);font-size:12px;padding:6px 8px;width:100%;outline:none;transition:border .2s}
-.ms-input:focus{border-color:var(--blue)}
-.ms-input.stop:focus{border-color:var(--red)}
-.ms-input.stop{border-color:color-mix(in srgb,var(--red) 40%,var(--bdr))}
-.btn-apply{background:var(--blue2);border:1px solid var(--blue);color:var(--blue);font-family:var(--font);font-size:11px;font-weight:700;padding:6px;border-radius:6px;cursor:pointer;width:100%;letter-spacing:.06em;transition:all .2s}
-.btn-apply:hover{background:var(--blue);color:#fff}
-.progress-bar-wrap{display:flex;flex-direction:column;gap:3px}
-.progress-bar{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}
-.progress-fill{height:100%;border-radius:3px;transition:width .5s}
-.progress-label{font-size:10px;color:var(--muted);display:flex;justify-content:space-between}
-
-/* Botões globais */
-.global-btns{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:auto}
-.btn-g{border:none;border-radius:7px;padding:8px 4px;font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;letter-spacing:.04em;border:1px solid transparent}
-.btn-g.ligar{background:var(--green2);color:var(--green);border-color:var(--green)}
-.btn-g.ligar:hover{background:var(--green);color:#000}
-.btn-g.pausar{background:var(--bg3);color:var(--txt);border-color:var(--bdr)}
-.btn-g.pausar:hover{background:var(--bdr)}
-.btn-g.fechar{background:var(--red2);color:var(--red);border-color:var(--red)}
-.btn-g.fechar:hover{background:var(--red);color:#fff}
-.btn-g:disabled{opacity:.4;cursor:not-allowed}
-
-/* Alerta meta/stop */
-.alert-banner{padding:8px 14px;border-radius:7px;font-size:12px;font-weight:700;text-align:center;display:none;animation:fadeIn .4s}
-.alert-banner.meta{background:var(--green2);border:1px solid var(--green);color:var(--green)}
-.alert-banner.stop{background:var(--red2);border:1px solid var(--red);color:var(--red)}
-@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
-
-/* Cards de EAs */
-.ea-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
-.ea-card{background:var(--card);border-radius:var(--radius);padding:12px;border:1.5px solid var(--bdr);position:relative;overflow:hidden;transition:border-color .3s}
-.ea-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
-.ea-card:hover{border-color:var(--blue)}
-.ea-card-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-.ea-avatar{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0;border:1.5px solid}
-.ea-name-wrap{flex:1;min-width:0}
-.ea-name{font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ea-id{font-size:9px;color:var(--muted);font-family:var(--mono)}
-.ea-badges{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
-.badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;border:1px solid;letter-spacing:.05em}
-.badge.ativo{background:var(--green2);color:var(--green);border-color:var(--green)}
-.badge.inativo{background:var(--red2);color:var(--red);border-color:var(--red)}
-.badge.pausado{background:var(--yellow2);color:var(--yellow);border-color:var(--yellow)}
-
-.ea-metrics{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
-.em-row{display:flex;justify-content:space-between;font-size:10px}
-.em-lbl{color:var(--muted)}
-.em-val{font-weight:700;font-family:var(--mono)}
-.em-sep{border:none;border-top:1px solid var(--sep);margin:4px 0}
-.ea-rent{font-size:18px;font-weight:800;font-family:var(--mono);text-align:right;margin-bottom:8px}
-
-.ea-btns{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}
-.btn-ea{border:none;border-radius:5px;padding:5px 2px;font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer;transition:all .2s;border:1px solid transparent}
-.btn-ea.ligar{background:var(--green2);color:var(--green);border-color:var(--green)}
-.btn-ea.ligar:hover{background:var(--green);color:#000}
-.btn-ea.pausar{background:var(--bg3);color:var(--txt);border-color:var(--bdr)}
-.btn-ea.pausar:hover{background:var(--bdr)}
-.btn-ea.fechar{background:var(--red2);color:var(--red);border-color:var(--red)}
-.btn-ea.fechar:hover{background:var(--red);color:#fff}
-.btn-ea:disabled{opacity:.35;cursor:not-allowed}
-
-/* ─── Gráfico ─── */
-.chart-section{background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--radius);padding:14px;width:100%;box-sizing:border-box}
-.chart-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px}
-.chart-title{font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
-.chart-legend{display:flex;gap:8px;flex-wrap:wrap}
-.leg-btn{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid;cursor:pointer;transition:all .2s;background:transparent}
-.leg-btn.active{opacity:1}
-.leg-btn.inactive{opacity:.35}
-.leg-dot{width:7px;height:7px;border-radius:50%}
-.chart-canvas-wrap{position:relative;height:280px;width:100%}
-canvas#chart{display:block;width:100%!important;height:100%!important}
-
-/* ─── Modo somente leitura ─── */
-.readonly-overlay{position:absolute;inset:0;background:rgba(0,0,0,.6);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);z-index:10}
-.readonly-msg{text-align:center;color:var(--muted);font-size:12px;line-height:1.6}
-.readonly-msg strong{color:var(--txt);display:block;margin-bottom:4px;font-size:14px}
-
-/* ─── Empty / Loading ─── */
-.loading{display:flex;align-items:center;justify-content:center;height:200px;color:var(--muted);font-size:13px;gap:10px}
-.spinner{width:20px;height:20px;border:2px solid var(--bdr);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.no-data{text-align:center;padding:40px;color:var(--muted);font-size:13px}
-
-/* ─── Responsivo ─── */
-@media(max-width:768px){
-  .main{padding:10px;gap:10px}
-  .stats-bar{grid-template-columns:repeat(2,1fr);gap:6px}
-  .donuts{flex-direction:row;padding-left:0;border-top:1px solid var(--sep);padding-top:10px;grid-column:1/-1;justify-content:center;gap:16px}  .global-cards{grid-template-columns:1fr}
-  .ea-grid{grid-template-columns:repeat(2,1fr);gap:6px}
-  .stat-item{border-right:none;border-bottom:1px solid var(--sep);padding-bottom:8px;padding-right:0}
-  .stat-value{font-size:16px}
-  .stat-label{font-size:9px}
-  .chart-canvas-wrap{height:180px}
-  .header{padding:10px 14px}
-  .logo-text{font-size:17px}
-  .badge-plan{font-size:10px;padding:2px 8px}
-  .status-txt{display:none}
-  .global-panel{padding:12px}
-  .ea-card{padding:10px}
-  .ea-name{font-size:12px}
-  .ea-rent{font-size:16px}
-  .btn-ea{padding:4px 2px;font-size:9px}
-  .gp-title{font-size:12px}
-  .metric-row .mval{font-size:11px}
-  .rent-big{font-size:18px}
-}
-@media(max-width:420px){
-  .ea-grid{grid-template-columns:1fr}
-  .donuts{flex-direction:row;gap:12px;justify-content:center}
-  .stats-bar{grid-template-columns:1fr 1fr}
-  .global-btns{grid-template-columns:repeat(3,1fr)}
-  .btn-g{font-size:10px;padding:7px 2px}
-  .chart-canvas-wrap{height:150px}
-}
-</style>
-</head>
-<body>
-<div class="app" id="app" style="display:none">
-
-<!-- HEADER -->
-<header class="header">
-  <div class="logo">
-    <div class="logo-icon"><img src="data:image/png;base64,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" style="width:28px;height:28px;object-fit:contain;filter:brightness(0) invert(1)" alt="iBot"></div>
-    <div class="logo-text">Dash<span>bot</span></div>
-  </div>
-  <div class="header-right">
-    <span class="badge-plan" id="badgePlan">FREE</span>
-    <span class="status-dot" id="statusDot" style="background:var(--muted);box-shadow:none"></span>
-    <span class="status-txt" id="statusTxt">Conectando...</span>
-    <button onclick="logout()" style="background:transparent;border:1px solid #1e2438;color:#64748b;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;margin-left:8px">↩ Sair</button>
-  </div>
-</header>
-
-<div class="main" id="main">
-  <div class="loading"><div class="spinner"></div>Buscando dados do MT5...</div>
-</div>
-
-</div><!-- /app -->
-
-<!-- Chart.js -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script>
-// ─── CONFIGURAÇÃO ───────────────────────────────────────────────
-const CONFIG = {
-  proxyUrl:  "https://dashbot.investidorbot.com",
-  authToken: "dashbot2024",
-  pollMs:    10000,
-};
-
-// ─── AUTH STATE ──────────────────────────────────────────────────
-var authState = {
-  sessionToken: localStorage.getItem('dashbot_session')||null,
-  account:      localStorage.getItem('dashbot_account')||null,
-  plan:         localStorage.getItem('dashbot_plan')||null,
-};
-
-// Parâmetros de URL (primeiro acesso via MT5)
-var urlParams = new URLSearchParams(window.location.search);
-var setupTokenURL = urlParams.get('setup');
-var accountURL    = urlParams.get('account');
-
-// ─── TELA DE LOGIN / CADASTRO ────────────────────────────────────
-function showLoginScreen(opts) {
-  opts = opts||{};
-  document.getElementById('app').style.display = 'none';
-  var screen = document.getElementById('authScreen');
-  if(!screen) {
-    screen = document.createElement('div');
-    screen.id = 'authScreen';
-    screen.style.cssText = 'position:fixed;inset:0;background:#08080f;display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px';
-    document.body.appendChild(screen);
-  }
-  var isSetup = (opts.mode==='setup') || !!opts.setupToken;
-  var preAccount = opts.account || accountURL || '';
-  var logoEl = document.querySelector('img[alt="iBot"]');
-  var logoB64 = logoEl ? logoEl.src : '';
-  screen.innerHTML = '<div style="background:#0f1120;border:1px solid #1e2438;border-radius:16px;padding:32px;max-width:380px;width:100%;text-align:center">' +
-    '<div style="width:64px;height:64px;margin:0 auto 16px;background:#0d1f3c;border-radius:12px;display:flex;align-items:center;justify-content:center">' +
-    (logoB64?'<img src="'+logoB64+'" style="width:48px;height:48px;object-fit:contain;filter:brightness(0) invert(1)">':'<span style="font-size:32px">🤖</span>')+'</div>'+
-    '<h2 style="color:#e8ecf4;font-size:20px;margin-bottom:4px">Dashbot</h2>'+
-    '<p style="color:#64748b;font-size:13px;margin-bottom:24px">'+(isSetup?'Crie sua senha de acesso':'Acesse seu dashboard')+'</p>'+
-    (opts.msg?'<div id="authMsg" style="background:#2d1117;border:1px solid #ef4444;color:#ef4444;padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:14px">'+opts.msg+'</div>':'')+
-    '<div style="text-align:left;margin-bottom:12px">'+
-    '<label style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px">Conta MT5</label>'+
-    '<input id="authAccount" type="number" placeholder="Número da sua conta" value="'+preAccount+'" '+(isSetup?'readonly ':'')+
-    'style="width:100%;background:#08080f;border:1px solid #1e2438;color:#e8ecf4;padding:10px 12px;border-radius:8px;font-size:14px;'+(isSetup?'opacity:.7':'')+'">'+ 
-    '</div>'+
-    (isSetup?
-      '<div style="text-align:left;margin-bottom:12px">'+
-      '<label style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px">Criar senha</label>'+
-      '<input id="authPw" type="password" placeholder="Mínimo 6 caracteres" style="width:100%;background:#08080f;border:1px solid #1e2438;color:#e8ecf4;padding:10px 12px;border-radius:8px;font-size:14px">'+
-      '</div>'+
-      '<div style="text-align:left;margin-bottom:20px">'+
-      '<label style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px">Confirmar senha</label>'+
-      '<input id="authPw2" type="password" placeholder="Repita a senha" style="width:100%;background:#08080f;border:1px solid #1e2438;color:#e8ecf4;padding:10px 12px;border-radius:8px;font-size:14px">'+
-      '</div>'+
-      '<button onclick="doSetupPassword(\''+opts.setupToken+'\')" style="width:100%;background:#2563eb;color:#fff;border:none;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Criar senha e entrar</button>'
-    :
-      '<div style="text-align:left;margin-bottom:12px">'+
-      '<label style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px">Senha</label>'+
-      '<input id="authPw" type="password" placeholder="Sua senha" style="width:100%;background:#08080f;border:1px solid #1e2438;color:#e8ecf4;padding:10px 12px;border-radius:8px;font-size:14px">'+
-      '</div>'+
-      '<button onclick="doLogin()" style="width:100%;background:#2563eb;color:#fff;border:none;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Entrar</button>'
-    )+
-    '<p style="color:#64748b;font-size:11px;margin-top:16px">Primeiro acesso? Use o botão<br><strong style="color:#3b82f6">[Acessar Dashbot Web]</strong> no MetaTrader 5</p>'+
-    '</div>';
+function ptDate(ms) {
+  return new Date(ms).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
 }
 
-function doLogin() {
-  var account = document.getElementById('authAccount').value;
-  var password = document.getElementById('authPw').value;
-  if(!account||!password){ showLoginScreen({msg:'Preencha todos os campos'}); return; }
-  var xhr = new XMLHttpRequest();
-  xhr.open('POST', CONFIG.proxyUrl+'/auth/login', true);
-  xhr.setRequestHeader('Content-Type','application/json');
-  xhr.onload = function() {
-    try {
-      var r = JSON.parse(xhr.responseText);
-      if(r.ok) {
-        authState.sessionToken = r.sessionToken;
-        authState.account      = r.account;
-        authState.plan         = r.plan;
-        localStorage.setItem('dashbot_session', r.sessionToken);
-        localStorage.setItem('dashbot_account', r.account);
-        localStorage.setItem('dashbot_plan',    r.plan);
-        hideAuthScreen();
-        startDashboard();
-      } else {
-        showLoginScreen({msg: r.error||'Conta ou senha incorretos'});
-      }
-    } catch(e){ showLoginScreen({msg:'Erro de conexão'}); }
+// ── JSONBin ───────────────────────────────────────────────────────
+function jbReq(method, binId, body, cb) {
+  if(!binId){ cb(new Error('No binId'),-1,''); return; }
+  const bodyStr = body ? JSON.stringify(body) : null;
+  const opts = {
+    hostname:'api.jsonbin.io', port:443,
+    path:`/v3/b/${binId}${method==='GET'?'/latest':''}`,
+    method,
+    headers:{'Content-Type':'application/json','X-Master-Key':MASTER_KEY,'X-Bin-Meta':'false'}
   };
-  xhr.onerror = function(){ showLoginScreen({msg:'Sem conexão com o servidor'}); };
-  xhr.send(JSON.stringify({account:account, password:password}));
+  if(bodyStr) opts.headers['Content-Length'] = Buffer.byteLength(bodyStr);
+  const req = https.request(opts, res => {
+    let d=''; res.on('data',c=>d+=c); res.on('end',()=>cb(null,res.statusCode,d));
+  });
+  req.on('error', err => cb(err,-1,''));
+  if(bodyStr) req.write(bodyStr);
+  req.end();
 }
 
-function doSetupPassword(setupToken) {
-  var account = document.getElementById('authAccount').value;
-  var pw  = document.getElementById('authPw').value;
-  var pw2 = document.getElementById('authPw2').value;
-  if(!pw||pw.length<6){ showLoginScreen({setupToken:setupToken,msg:'Senha muito curta (mínimo 6 caracteres)'}); return; }
-  if(pw!==pw2){ showLoginScreen({setupToken:setupToken,msg:'As senhas não conferem'}); return; }
-  var xhr = new XMLHttpRequest();
-  xhr.open('POST', CONFIG.proxyUrl+'/auth/setup-password', true);
-  xhr.setRequestHeader('Content-Type','application/json');
-  xhr.onload = function() {
-    try {
-      var r = JSON.parse(xhr.responseText);
-      if(r.ok) {
-        authState.sessionToken = r.sessionToken;
-        authState.account      = r.account;
-        authState.plan         = r.plan;
-        localStorage.setItem('dashbot_session', r.sessionToken);
-        localStorage.setItem('dashbot_account', r.account);
-        localStorage.setItem('dashbot_plan',    r.plan);
-        // Limpa URL
-        window.history.replaceState({},document.title,window.location.pathname);
-        hideAuthScreen();
-        startDashboard();
-      } else {
-        showLoginScreen({setupToken:setupToken,msg:r.error||'Erro ao criar senha'});
-      }
-    } catch(e){ showLoginScreen({setupToken:setupToken,msg:'Erro de conexão'}); }
-  };
-  xhr.onerror = function(){ showLoginScreen({setupToken:setupToken,msg:'Sem conexão'}); };
-  xhr.send(JSON.stringify({setupToken:setupToken, password:pw}));
+function readBody(req) {
+  return new Promise(r => { let b=''; req.on('data',c=>b+=c); req.on('end',()=>r(b)); });
 }
 
-function hideAuthScreen() {
-  var s = document.getElementById('authScreen');
-  if(s) s.remove();
-  document.getElementById('app').style.display = 'flex';
+// ── DB helpers ────────────────────────────────────────────────────
+async function getLics() {
+  return new Promise(resolve => {
+    if(!LICENSE_BIN){ resolve({}); return; }
+    const now = Date.now();
+    if(now-lastLicLoad < CACHE_TTL){ resolve(licenseCache); return; }
+    jbReq('GET', LICENSE_BIN, null, (err,code,data) => {
+      if(!err && code===200) try {
+        const p = JSON.parse(data); licenseCache = p.licenses||{}; lastLicLoad = now;
+      } catch(e){}
+      resolve(licenseCache);
+    });
+  });
 }
-
-function logout() {
-  localStorage.removeItem('dashbot_session');
-  localStorage.removeItem('dashbot_account');
-  localStorage.removeItem('dashbot_plan');
-  authState = {sessionToken:null,account:null,plan:null};
-  showLoginScreen();
+async function saveLics(lics) {
+  return new Promise(resolve => {
+    jbReq('PUT', LICENSE_BIN, {licenses:lics}, (err,code) => {
+      if(!err && code===200){ licenseCache=lics; lastLicLoad=Date.now(); }
+      resolve(!err && code===200);
+    });
+  });
 }
-
-function startDashboard() {
-  fetchData();
-  setInterval(fetchData, CONFIG.pollMs);
+async function getAuth() {
+  // Se AUTH_BIN não configurado, usa LICENSE_BIN como fallback
+  const binId = AUTH_BIN || LICENSE_BIN;
+  return new Promise(resolve => {
+    if(!binId){ resolve({users:{},tokens:{}}); return; }
+    const now = Date.now();
+    if(AUTH_BIN && now-lastAuthLoad < CACHE_TTL){ resolve(authCache); return; }
+    jbReq('GET', binId, null, (err,code,data) => {
+      if(!err && code===200) try {
+        const p = JSON.parse(data);
+        // Se usando LICENSE_BIN, auth fica em p.auth; senão p.auth
+        const src = AUTH_BIN ? p.auth : (p.auth||{});
+        authCache = src||{};
+        lastAuthLoad = now;
+      } catch(e){}
+      if(!authCache.users)  authCache.users  = {};
+      if(!authCache.tokens) authCache.tokens = {};
+      resolve(authCache);
+    });
+  });
 }
-
-// ─── INICIALIZAÇÃO ────────────────────────────────────────────────
-(function init() {
-  // CASO 1: Primeiro acesso via MT5 com setupToken → cadastra senha
-  if(setupTokenURL && accountURL) {
-    showLoginScreen({mode:'setup', setupToken:setupTokenURL, account:accountURL});
-    return;
-  }
-
-  // CASO 2: Veio do MT5 só com account (WebRequest falhou no EA)
-  // Verifica no servidor se essa conta já tem senha cadastrada
-  if(accountURL && !authState.sessionToken) {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', CONFIG.proxyUrl+'/auth/check?account='+accountURL, true);
-    xhr.timeout = 5000;
-    xhr.onload = function() {
-      try {
-        var r = JSON.parse(xhr.responseText);
-        if(r.hasPassword) {
-          // Conta já ativada → tela de login normal com conta preenchida
-          showLoginScreen({mode:'login', account:accountURL});
-        } else if(r.setupToken) {
-          // Conta existe mas sem senha → tela de cadastro
-          showLoginScreen({mode:'setup', setupToken:r.setupToken, account:accountURL});
-        } else {
-          showLoginScreen({mode:'login', account:accountURL,
-            msg:'Acesse primeiro pelo botão no MetaTrader 5'});
-        }
-      } catch(e){ showLoginScreen({mode:'login', account:accountURL}); }
-    };
-    xhr.onerror = function(){ showLoginScreen({mode:'login', account:accountURL}); };
-    xhr.ontimeout = function(){ showLoginScreen({mode:'login', account:accountURL}); };
-    xhr.send();
-    return;
-  }
-
-  // CASO 3: Tem sessão salva → verifica se ainda válida
-  if(authState.sessionToken) {
-    var xhr2 = new XMLHttpRequest();
-    xhr2.open('GET', CONFIG.proxyUrl+'/auth/verify?token='+authState.sessionToken, true);
-    xhr2.timeout = 8000;
-    xhr2.onload = function() {
-      try {
-        var r = JSON.parse(xhr2.responseText);
-        if(r.ok) { authState.plan=r.plan; hideAuthScreen(); startDashboard(); }
-        else { showLoginScreen({mode:'login', msg:'Sessão expirada. Faça login novamente.'}); }
-      } catch(e){ showLoginScreen({mode:'login'}); }
-    };
-    xhr2.onerror = function(){ showLoginScreen({mode:'login'}); };
-    xhr2.ontimeout = function(){ showLoginScreen({mode:'login'}); };
-    xhr2.send();
-    return;
-  }
-
-  // CASO 4: Acesso direto sem nada → tela de login padrão
-  showLoginScreen({mode:'login'});
-})();
-
-// Filtro de período ativo
-var activePeriod = 'all';
-var state = {
-  data: null, isPremium: false, chart: null,
-  visibleEAs: {}, metaDia: 0, stopDia: 0,
-  metaAtingida: false, stopAtingido: false,
-  customFrom: null, customTo: null,
-};
-const PERIODS = { '7d':7, '1m':30, '3m':90, '1a':365, 'all':null };
-
-function applyDateRange() {
-  var f = document.getElementById('dateFrom');
-  var t = document.getElementById('dateTo');
-  if(!f||!t) return;
-  state.customFrom = f.value || null;
-  state.customTo   = t.value || null;
-  document.querySelectorAll('.pf-btn').forEach(b=>b.classList.remove('active'));
-  activePeriod = null;
-  if(state.data) initChart(state.data);
-}
-
-const EA_COLORS = [
-  '#2dd46a','#288cff','#ff8c00','#b43fff','#e03333',
-  '#00ccaa','#f0c800','#ff4d99','#4a9fff','#ff7a1a'
-];
-
-// ─── FETCH ───────────────────────────────────────────────────────
-function fetchData() {
-  var tok = authState.sessionToken || CONFIG.authToken;
-  var url = CONFIG.proxyUrl + '/data?token=' + tok;
-  // Usa XMLHttpRequest para máxima compatibilidade iOS
-  var xhr = new XMLHttpRequest();
-  xhr.open('GET', url, true);
-  xhr.timeout = 10000;
-  xhr.onload = function() {
-    if (xhr.status >= 200 && xhr.status < 300) {
-      try {
-        var d = JSON.parse(xhr.responseText);
-        state.data = d;
-        state.isPremium = d.premium === true;
-        updateStatus(true, d.ts);
-        render();
-      } catch(e) {
-        updateStatus(false, null);
-      }
+async function saveAuth(db) {
+  const binId = AUTH_BIN || LICENSE_BIN;
+  return new Promise(resolve => {
+    if(!binId){ resolve(false); return; }
+    if(AUTH_BIN) {
+      // Salva diretamente no AUTH_BIN
+      jbReq('PUT', binId, {auth:db}, (err,code) => {
+        if(!err && code===200){ authCache=db; lastAuthLoad=Date.now(); }
+        resolve(!err && code===200);
+      });
     } else {
-      updateStatus(false, null);
+      // Salva dentro do LICENSE_BIN junto com as licenças
+      jbReq('GET', binId, null, (err,code,data) => {
+        let existing = {};
+        if(!err && code===200) try{ existing=JSON.parse(data); }catch(e){}
+        existing.auth = db;
+        jbReq('PUT', binId, existing, (err2,code2) => {
+          if(!err2 && code2===200){ authCache=db; lastAuthLoad=Date.now(); }
+          resolve(!err2 && code2===200);
+        });
+      });
     }
-  };
-  xhr.onerror = function() { updateStatus(false, null); };
-  xhr.ontimeout = function() { updateStatus(false, null); };
-  xhr.send();
-}
-
-function sendCommand(cmd, magic) {
-  if (!state.isPremium) return;
-  magic = magic || 0;
-  var url = CONFIG.proxyUrl + '/command?token=' + CONFIG.authToken;
-  var xhr = new XMLHttpRequest();
-  xhr.open('POST', url, true);
-  xhr.setRequestHeader('Content-Type', 'application/json');
-  xhr.onload = function() { setTimeout(fetchData, 3000); };
-  xhr.onerror = function() {};
-  xhr.send(JSON.stringify({ cmd: cmd, magic: magic, ts: Date.now() }));
-}
-
-function updateStatus(ok, ts) {
-  const dot = document.getElementById('statusDot');
-  const txt = document.getElementById('statusTxt');
-  if (ok) {
-    dot.style.background = 'var(--green)';
-    dot.style.boxShadow  = '0 0 8px var(--green)';
-    const ago = ts ? Math.round((Date.now()/1000 - ts)) : 0;
-    let agoStr = '';
-    if (ago < 60)       agoStr = `${ago}s atrás`;
-    else if (ago < 3600) agoStr = `${Math.floor(ago/60)}min atrás`;
-    else                 agoStr = `${Math.floor(ago/3600)}h atrás`;
-    txt.textContent = `Atualizado ${agoStr}`;
-  } else {
-    dot.style.background = 'var(--red)';
-    dot.style.boxShadow  = '0 0 8px var(--red)';
-    txt.textContent = 'Sem conexão';
-  }
-}
-
-// ─── RENDER ──────────────────────────────────────────────────────
-function render() {
-  const d = state.data;
-  if (!d || !d.eas) return;
-
-  document.getElementById('badgePlan').textContent = d.plan || 'FREE';
-
-  d.eas.forEach((ea, i) => {
-    if (state.visibleEAs[ea.magic] === undefined)
-      state.visibleEAs[ea.magic] = true;
   });
-
-  checkDailyLimits(d);
-
-  const main = document.getElementById('main');
-  main.innerHTML = '';
-
-  // 1. Stats bar
-  main.appendChild(buildStatsBar(d));
-
-  // 2. Gráfico — ACIMA dos cards
-  main.appendChild(buildChart(d));
-
-  // 3. Painel global + cards — ABAIXO do gráfico
-  const gc = document.createElement('div');
-  gc.className = 'global-cards';
-  gc.appendChild(buildGlobalPanel(d));
-  const right = document.createElement('div');
-  right.style.display = 'flex';
-  right.style.flexDirection = 'column';
-  right.style.gap = '8px';
-  right.appendChild(buildEAGrid(d));
-  gc.appendChild(right);
-  main.appendChild(gc);
 }
 
-// ─── STATS BAR ───────────────────────────────────────────────────
-function buildStatsBar(d) {
-  let eas = d.eas.filter(ea => state.visibleEAs[ea.magic] !== false);
-  if (eas.length === 0) eas = d.eas;
+// ── License check ─────────────────────────────────────────────────
+function checkLic(lic) {
+  const now = Date.now();
+  if(!lic) return {valid:false,plan:'none',expired:true};
+  if(lic.type==='premium') {
+    if(lic.premiumEnd && now < lic.premiumEnd)
+      return {valid:true,plan:'premium',daysLeft:Math.ceil((lic.premiumEnd-now)/DAY_MS)};
+    return {valid:false,plan:'expired',expired:true};
+  }
+  const trialEnd = lic.trialEnd || ((lic.trialStart||now) + TRIAL_DAYS*DAY_MS);
+  if(now < trialEnd)
+    return {valid:true,plan:'trial',daysLeft:Math.ceil((trialEnd-now)/DAY_MS)};
+  return {valid:false,plan:'expired',expired:true};
+}
 
-  // Determina campos de acordo com o período ativo
-  // '7d','1m' → semana/mês; 'all' → total
-  function periodFields(ea) {
-    const p = activePeriod;
-    if (p === '7d')      return { profit: ea.profitWeek||0, trades: ea.tradesWeek||0, wins: ea.winsWeek||0 };
-    if (p === '1m' || p === '3m') return { profit: ea.profitMonth||0, trades: ea.tradesMonth||0, wins: ea.winsMonth||0 };
-    return { profit: ea.profitTotal||0, trades: ea.totalTrades||0, wins: ea.totalWins||0 };
+// ── Token verify ──────────────────────────────────────────────────
+async function verifySession(token) {
+  if(!token) return null;
+  const db = await getAuth();
+  for(const k of Object.keys(db.tokens||{})) {
+    const t = db.tokens[k];
+    if(t.token===token && t.type==='session' && t.expires>Date.now()) return t;
+  }
+  return null;
+}
+
+// ── HTTP ──────────────────────────────────────────────────────────
+const CORS = {
+  'Access-Control-Allow-Origin':'*',
+  'Access-Control-Allow-Methods':'GET,POST,PUT,DELETE,OPTIONS',
+  'Access-Control-Allow-Headers':'Content-Type,Authorization,X-Dashbot-Token,X-Auth-Token'
+};
+function sendJSON(res,code,obj){
+  const b=JSON.stringify(obj);
+  res.writeHead(code,{...CORS,'Content-Type':'application/json','Content-Length':Buffer.byteLength(b)});
+  res.end(b);
+}
+function sendHTML(res,html){
+  res.writeHead(200,{...CORS,'Content-Type':'text/html;charset=utf-8'});
+  res.end(html);
+}
+function adminAuth(req){
+  const a=req.headers['authorization']||'';
+  if(!a.startsWith('Basic ')) return false;
+  const [u,p]=Buffer.from(a.slice(6),'base64').toString().split(':');
+  return u===ADMIN_USER && p===ADMIN_PASS;
+}
+
+// ── Server ────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+
+http.createServer(async (req, res) => {
+  const parsed  = new URL(req.url,'http://localhost');
+  const reqPath = parsed.pathname;
+  const method  = req.method.toUpperCase();
+  const qs      = parsed.searchParams;
+
+  if(method==='OPTIONS'){ res.writeHead(204,CORS); res.end(); return; }
+
+  // Health check para o Render
+  if(reqPath==='/health'||reqPath==='/ping'){
+    sendJSON(res,200,{status:'ok','service':'Dashbot Server v3',ts:Date.now()});
+    return;
   }
 
-  let totTrades=0, totWins=0, totalProfit=0, maxDD=0;
-  let grossProfit=0, grossLoss=0;
-  eas.forEach(ea => {
-    const f = periodFields(ea);
-    totTrades   += f.trades;
-    totWins     += f.wins;
-    totalProfit += f.profit;
-    // Estima PF pelo ratio de vitórias/perdas do período
-    const pf = ea.profitFactor||0;
-    if (pf > 0 && f.profit > 0) { grossProfit += f.profit; grossLoss += f.profit/pf; }
-    else if (f.profit < 0)      { grossLoss += Math.abs(f.profit); }
-    if ((ea.equityDD||0) > maxDD) maxDD = ea.equityDD;
-  });
-
-  let pf, rf, wr, dd;
-  if (eas.length === 1) {
-    const f = periodFields(eas[0]);
-    pf = (eas[0].profitFactor||0).toFixed(2);
-    rf = (eas[0].recoveryFactor||0).toFixed(2);
-    wr = f.trades ? (f.wins/f.trades*100).toFixed(1) : '0';
-    dd = (eas[0].equityDD||0).toFixed(1);
-  } else {
-    pf = (grossLoss > 0 ? grossProfit/grossLoss : 0).toFixed(2);
-    rf = maxDD > 0 ? (totalProfit/maxDD).toFixed(2) : '0';
-    wr = totTrades ? (totWins/totTrades*100).toFixed(1) : '0';
-    dd = maxDD.toFixed(1);
+  // Serve o dashboard web
+  if(reqPath==='/'||reqPath==='/dashbot'||reqPath==='/dashbot/'){
+    const htmlPath = path.join(__dirname,'dashbot_web.html');
+    if(fs.existsSync(htmlPath)){
+      res.writeHead(200,{...CORS,'Content-Type':'text/html;charset=utf-8'});
+      res.end(fs.readFileSync(htmlPath));
+    } else {
+      sendJSON(res,404,{error:'dashbot_web.html not found on server'});
+    }
+    return;
   }
 
-  const bar = el('div','stats-bar');
-  bar.appendChild(statItem('FATOR DE LUCRO', pf, '', 'var(--blue)'));
-  bar.appendChild(statItem('FATOR RECUPERAÇÃO', rf, '', 'var(--txt)'));
-  bar.appendChild(statItem('TOTAL OPERAÇÕES', totTrades, '', 'var(--txt)'));
-  bar.appendChild(statItem('TOTAL VITÓRIAS', totWins, '', 'var(--green)'));
-
-  // Roscas
-  const donuts = el('div','donuts');
-  donuts.appendChild(buildDonut('Taxa de Acerto', parseFloat(wr), 100-parseFloat(wr), 'var(--blue)', 'var(--red)', 'Acertos', 'Erros', wr+'%'));
-  donuts.appendChild(buildDonut('Equity DD', 100-parseFloat(dd), parseFloat(dd), 'var(--blue)', 'var(--red)', 'Capital', 'DD', dd+'%'));
-  bar.appendChild(donuts);
-  return bar;
-}
-
-function statItem(label, value, sub, color) {
-  const d = el('div','stat-item');
-  d.innerHTML = `<span class="stat-label">${label}</span>
-    <span class="stat-value" style="color:${color}">${value}</span>
-    ${sub?`<span class="stat-sub">${sub}</span>`:''}`;
-  return d;
-}
-
-function buildDonut(title, pct1, pct2, c1, c2, l1, l2, centerText) {
-  const wrap = el('div','donut-wrap');
-  wrap.innerHTML = `<span class="donut-label-top">${title}</span>`;
-  const cw = el('div','donut-canvas-wrap');
-  const canvas = document.createElement('canvas');
-  canvas.width = 80; canvas.height = 80;
-  const center = el('div','donut-center'); center.textContent = centerText;
-  cw.appendChild(canvas); cw.appendChild(center);
-  const legend = el('div','donut-legend');
-  legend.innerHTML = `<span class="leg-blue">${l1}</span><span class="leg-red">${l2}</span>`;
-  wrap.appendChild(cw); wrap.appendChild(legend);
-
-  // Desenha a rosca
-  setTimeout(() => {
-    const ctx = canvas.getContext('2d');
-    const total = pct1 + pct2 || 1;
-    const a1 = (pct1/total)*Math.PI*2 - Math.PI/2;
-    const colors = [getComputedColor(c1), getComputedColor(c2)];
-    const data = [pct1, pct2];
-    let start = -Math.PI/2;
-    data.forEach((v,i) => {
-      const end = start + (v/total)*Math.PI*2;
-      ctx.beginPath();
-      ctx.moveTo(40,40);
-      ctx.arc(40,40,36,start,end);
-      ctx.closePath();
-      ctx.fillStyle = colors[i];
-      ctx.fill();
-      start = end;
-    });
-    // Furo interno
-    ctx.beginPath(); ctx.arc(40,40,24,0,Math.PI*2);
-    ctx.fillStyle = getComputedColor('var(--bg2)') || '#0d0f1a';
-    ctx.fill();
-  }, 50);
-  return wrap;
-}
-
-function getComputedColor(v) {
-  if (v.startsWith('var(')) {
-    const name = v.slice(4,-1);
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  }
-  return v;
-}
-
-// ─── PAINEL GLOBAL ───────────────────────────────────────────────
-function buildGlobalPanel(d) {
-  const panel = el('div','global-panel');
-  const isPremium = state.isPremium;
-  const eas = d.eas;
-  const tot = {
-    open:  eas.reduce((s,e)=>s+e.profitOpen,0),
-    day:   eas.reduce((s,e)=>s+e.profitDay,0),
-    week:  eas.reduce((s,e)=>s+e.profitWeek,0),
-    month: eas.reduce((s,e)=>s+e.profitMonth,0),
-    total: eas.reduce((s,e)=>s+e.profitTotal,0),
-    dd:    eas.reduce((s,e)=>s+e.maxDrawdown,0),
-    ddPct: eas.reduce((s,e)=>s+e.maxDrawdownPct,0) / (eas.length||1),
-    cap:   eas.reduce((s,e)=>s+e.initialCapital,0),
-  };
-  const rent = tot.cap > 0 ? (tot.total/tot.cap*100) : 0;
-
-  // Alerta meta/stop
-  const alertEl = el('div','alert-banner');
-  alertEl.id = 'alertBanner';
-  if (state.metaAtingida) { alertEl.className='alert-banner meta'; alertEl.style.display='block'; alertEl.textContent='✓ META DIÁRIA ATINGIDA'; }
-  if (state.stopAtingido) { alertEl.className='alert-banner stop'; alertEl.style.display='block'; alertEl.textContent='✕ STOP DIÁRIO ATINGIDO'; }
-  panel.appendChild(alertEl);
-
-  panel.innerHTML += `
-    <div class="gp-title">PAINEL GLOBAL</div>
-    <div class="gp-sub">Consolidado de todos os robôs</div>
-    <hr class="gp-sep">
-    ${metricRow('OP. ABERTA', tot.open, true)}
-    <hr class="gp-sep">
-    ${metricRow('DIA',   tot.day)}
-    ${metricRow('SEMANA',tot.week)}
-    ${metricRow('MÊS',   tot.month)}
-    ${metricRow('TOTAL', tot.total)}
-    <hr class="gp-sep">
-    ${metricRowRed('DRAWDOWN MAX', '-'+fmt(Math.abs(tot.dd))+' ('+tot.ddPct.toFixed(1)+'%)')}
-    <div class="rent-big" style="color:${rent>=0?'var(--green)':'var(--red)'}">${rent>=0?'+':''}${rent.toFixed(2)}%</div>
-    <hr class="gp-sep">
-  `;
-  panel.appendChild(alertEl); // move para o topo
-
-  // Meta/Stop — só Premium pode editar
-  const ms = el('div','meta-stop');
-  if (isPremium) {
-    ms.innerHTML = `
-      <div class="ms-label">Meta / Stop Diário</div>
-      <input class="ms-input" id="metaInput" type="number" min="0" placeholder="Meta diária ($)" value="${state.metaDia||''}">
-      <input class="ms-input stop" id="stopInput" type="number" min="0" placeholder="Stop diário ($)" value="${state.stopDia||''}">
-      <button class="btn-apply" id="btnApply">Aplicar</button>
-    `;
-  } else {
-    ms.innerHTML = `
-      <div class="ms-label" style="color:var(--muted)">Meta / Stop Diário <span style="font-size:10px;color:var(--blue)">🔒 Premium</span></div>
-    `;
-  }
-  panel.appendChild(ms);
-
-  // Barra de progresso
-  if (isPremium && (state.metaDia > 0 || state.stopDia > 0)) {
-    const ref = state.metaDia > 0 ? state.metaDia : state.stopDia;
-    const val = state.metaDia > 0 ? tot.day : -tot.day;
-    const pct = Math.min(100, Math.max(0, val/ref*100));
-    const isStop = state.stopDia > 0 && tot.day < 0;
-    const pbWrap = el('div','progress-bar-wrap');
-    pbWrap.innerHTML = `
-      <div class="progress-label">
-        <span>$ ${tot.day.toFixed(2)}</span>
-        <span>${pct.toFixed(0)}%</span>
-      </div>
-      <div class="progress-bar">
-        <div class="progress-fill" style="width:${pct}%;background:${isStop?'var(--red)':'var(--green)'}"></div>
-      </div>
-    `;
-    panel.appendChild(pbWrap);
+  // /validate — EA valida licença
+  if(reqPath==='/validate'){
+    const account = qs.get('account')||'';
+    const lics = await getLics();
+    const now  = Date.now();
+    let lic = lics[account];
+    if(!lic){
+      lic={account,type:'trial',trialStart:now,trialEnd:now+TRIAL_DAYS*DAY_MS,firstSeen:now,lastSeen:now};
+      lics[account]=lic; await saveLics(lics);
+    } else {
+      lics[account].lastSeen=now; await saveLics(lics);
+    }
+    const s=checkLic(lic);
+    sendJSON(res,200,{...s,account,trialStart:lic.trialStart,trialEnd:lic.trialEnd||null,premiumEnd:lic.premiumEnd||null});
+    return;
   }
 
-  // Botões globais — desabilitados para Free
-  const anyRunning = d.eas.some(function(e){ return e.isRunning; });
-  const anyPaused  = d.eas.some(function(e){ return e.isPaused; });
-  const btnsWrap = el('div', isPremium?'global-btns':'global-btns free-lock');
-
-  const btnLigar = document.createElement('button');
-  btnLigar.className = 'btn-g ' + (anyRunning?'fechar':'ligar');
-  btnLigar.disabled = !isPremium;
-  btnLigar.textContent = anyRunning ? 'DESLIGAR' : 'LIGAR';
-  if (isPremium) btnLigar.addEventListener('click', function(){ sendCommand(anyRunning?'desligar':'ligar', 0); });
-
-  const btnPausar = document.createElement('button');
-  btnPausar.className = 'btn-g pausar';
-  btnPausar.disabled = !isPremium;
-  btnPausar.textContent = anyPaused ? 'RETOMAR' : 'PAUSAR';
-  if (isPremium) btnPausar.addEventListener('click', function(){ sendCommand(anyPaused?'retomar':'pausar', 0); });
-
-  const btnFechar = document.createElement('button');
-  btnFechar.className = 'btn-g fechar';
-  btnFechar.disabled = !isPremium;
-  btnFechar.textContent = 'FECHAR';
-  if (isPremium) btnFechar.addEventListener('click', function(){ sendCommand('fechar', 0); });
-
-  btnsWrap.appendChild(btnLigar);
-  btnsWrap.appendChild(btnPausar);
-  btnsWrap.appendChild(btnFechar);
-  const btns = btnsWrap;
-  panel.appendChild(btns);
-
-  if (!isPremium) {
-    const ov = el('div','readonly-overlay');
-    ov.style.position='relative'; ov.style.marginTop='8px';
-    ov.innerHTML = '<div class="readonly-msg"><strong>🔒 Modo Free</strong>Apenas visualização.<br>Upgrade para controle total.</div>';
-    // Não bloqueia tudo, só mostra aviso nos botões
+  // /auth/check — verifica se conta tem senha e retorna setupToken se não tiver
+  if(reqPath==='/auth/check'){
+    const account=qs.get('account')||'';
+    if(!account){sendJSON(res,400,{error:'account obrigatório'});return;}
+    const lics=await getLics();
+    const now=Date.now();
+    // Cria trial se não existe
+    if(!lics[account]){
+      lics[account]={account,type:'trial',trialStart:now,
+        trialEnd:now+TRIAL_DAYS*DAY_MS,firstSeen:now,lastSeen:now};
+      await saveLics(lics);
+    }
+    const s=checkLic(lics[account]);
+    if(!s.valid){sendJSON(res,403,{error:'Licença expirada'});return;}
+    const db=await getAuth();
+    const hasPassword=!!db.users?.[String(account)];
+    if(hasPassword){
+      sendJSON(res,200,{hasPassword:true,plan:s.plan});
+    } else {
+      // Gera setupToken para cadastro de senha
+      const setupToken=genToken(account);
+      if(!db.tokens) db.tokens={};
+      db.tokens['setup_'+account]={token:setupToken,account,
+        expires:Date.now()+600000,type:'setup'};
+      await saveAuth(db);
+      sendJSON(res,200,{hasPassword:false,setupToken,account,plan:s.plan});
+    }
+    return;
   }
 
-  // Eventos meta/stop
-  setTimeout(() => {
-    const btnAp = document.getElementById('btnApply');
-    if (btnAp) btnAp.addEventListener('click', () => {
-      state.metaDia = parseFloat(document.getElementById('metaInput').value)||0;
-      state.stopDia = parseFloat(document.getElementById('stopInput').value)||0;
-      state.metaAtingida = false;
-      state.stopAtingido = false;
-      render();
-    });
-  }, 50);
+  // /auth/mt5-link — EA abre link de primeiro acesso
+  if(reqPath==='/auth/mt5-link' && method==='POST'){
+    const token=qs.get('token')||'';
+    if(token!==PROXY_TOKEN){sendJSON(res,401,{error:'Token inválido'});return;}
+    const body=await readBody(req);
+    let data; try{data=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+    const {account}=data;
+    if(!account){sendJSON(res,400,{error:'account obrigatório'});return;}
 
-  return panel;
-}
+    const lics=await getLics();
+    const now=Date.now();
+    // Cria trial automaticamente se conta não existe
+    if(!lics[account]){
+      lics[account]={account,type:'trial',trialStart:now,
+        trialEnd:now+TRIAL_DAYS*DAY_MS,firstSeen:now,lastSeen:now};
+      await saveLics(lics);
+    }
+    const s=checkLic(lics[account]);
+    if(!s.valid){sendJSON(res,403,{error:'Licença expirada',expired:true});return;}
 
-function metricRow(label, val, isOpen=false) {
-  const c = val > 0 ? 'var(--green)' : val < 0 ? 'var(--red)' : 'var(--muted)';
-  const prefix = val >= 0 ? '+' : '-';
-  return `<div class="metric-row">
-    <span class="mlbl">${label}</span>
-    <span class="mval" style="color:${c}">${prefix}${fmt(Math.abs(val))}</span>
-  </div>`;
-}
+    const db=await getAuth();
+    const setupToken=genToken(account);
+    if(!db.tokens) db.tokens={};
+    db.tokens['setup_'+account]={token:setupToken,account,expires:Date.now()+600000,type:'setup'};
+    await saveAuth(db);
+    const hasPassword=!!db.users?.[String(account)];
+    sendJSON(res,200,{ok:true,setupToken,account,plan:s.plan,hasPassword});
+    return;
+  }
 
-function metricRowRed(label, val) {
-  return `<div class="metric-row">
-    <span class="mlbl">${label}</span>
-    <span class="mval" style="color:var(--red)">${val}</span>
-  </div>`;
-}
+  // /auth/setup-password — cadastra senha no primeiro acesso
+  if(reqPath==='/auth/setup-password' && method==='POST'){
+    const body=await readBody(req);
+    let data; try{data=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+    const {setupToken,password}=data;
+    if(!setupToken||!password){sendJSON(res,400,{error:'Campos obrigatórios'});return;}
+    if(password.length<6){sendJSON(res,400,{error:'Senha mínimo 6 caracteres'});return;}
+    const db=await getAuth();
+    let account=null;
+    for(const k of Object.keys(db.tokens||{})){
+      const t=db.tokens[k];
+      if(t.token===setupToken&&t.type==='setup'&&t.expires>Date.now()){
+        account=t.account; delete db.tokens[k]; break;
+      }
+    }
+    if(!account){sendJSON(res,401,{error:'Token inválido ou expirado'});return;}
+    db.users[account]={account,passwordHash:hashPw(password),createdAt:Date.now()};
+    const sessionToken=genToken(account);
+    db.tokens['sess_'+account+'_'+Date.now()]={token:sessionToken,account,expires:Date.now()+30*DAY_MS,type:'session'};
+    await saveAuth(db);
+    const lics=await getLics(); const s=checkLic(lics[account]);
+    sendJSON(res,200,{ok:true,sessionToken,account,plan:s.plan,valid:s.valid});
+    return;
+  }
 
-// ─── EA GRID ─────────────────────────────────────────────────────
-function buildEAGrid(d) {
-  const grid = el('div','ea-grid');
-  d.eas.forEach((ea, idx) => grid.appendChild(buildEACard(ea, idx, d.premium)));
-  return grid;
-}
+  // /auth/login — login com conta+senha
+  if(reqPath==='/auth/login' && method==='POST'){
+    const body=await readBody(req);
+    let data; try{data=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+    const {account,password}=data;
+    if(!account||!password){sendJSON(res,400,{error:'Campos obrigatórios'});return;}
+    const db=await getAuth();
+    const user=db.users[String(account)];
+    if(!user||user.passwordHash!==hashPw(password)){sendJSON(res,401,{error:'Conta ou senha incorretos'});return;}
+    const lics=await getLics(); const s=checkLic(lics[String(account)]);
+    const sessionToken=genToken(account);
+    if(!db.tokens) db.tokens={};
+    db.tokens['sess_'+account+'_'+Date.now()]={token:sessionToken,account:String(account),expires:Date.now()+30*DAY_MS,type:'session'};
+    await saveAuth(db);
+    sendJSON(res,200,{ok:true,sessionToken,account:String(account),plan:s.plan,valid:s.valid,daysLeft:s.daysLeft});
+    return;
+  }
 
-function buildEACard(ea, idx, isPremium) {
-  const c = EA_COLORS[idx % EA_COLORS.length];
-  const card = el('div','ea-card');
-  card.style.borderColor = c+'44';
-  card.querySelector ? null : null;
+  // /auth/verify — verifica sessão
+  if(reqPath==='/auth/verify'){
+    const tok=qs.get('token')||req.headers['x-auth-token']||'';
+    const sess=await verifySession(tok);
+    if(!sess){sendJSON(res,401,{error:'Sessão inválida'});return;}
+    const lics=await getLics(); const s=checkLic(lics[sess.account]);
+    sendJSON(res,200,{ok:true,account:sess.account,plan:s.plan,valid:s.valid,daysLeft:s.daysLeft});
+    return;
+  }
 
-  // Barra topo colorida
-  const bar = document.createElement('div');
-  bar.style.cssText = `position:absolute;top:0;left:0;right:0;height:3px;background:${c}`;
-  card.appendChild(bar);
-
-  const nm = ea.name || ('Magic#'+ea.magic);
-  const rent = ea.rentability||0;
-  const rc = rent>=0?'var(--green)':'var(--red)';
-
-  card.innerHTML += `
-    <div class="ea-card-header">
-      <div class="ea-avatar" style="background:${c}22;color:${c};border-color:${c}44">${nm[0].toUpperCase()}</div>
-      <div class="ea-name-wrap">
-        <div class="ea-name" style="color:${c}">${nm}</div>
-        <div class="ea-id">#${ea.magic}</div>
-      </div>
-    </div>
-    <div class="ea-badges">
-      <span class="badge ${ea.isRunning?'ativo':'inativo'}">${ea.isRunning?'● ATIVO':'● INATIVO'}</span>
-      ${ea.isPaused?'<span class="badge pausado">PAUSADO</span>':''}
-    </div>
-    <div class="ea-metrics">
-      ${emRow('Op. Aberta', ea.profitOpen, true)}
-      <div class="em-sep"></div>
-      ${emRow('Dia',    ea.profitDay)}
-      ${emRow('Semana', ea.profitWeek)}
-      ${emRow('Mês',    ea.profitMonth)}
-      ${emRow('Total',  ea.profitTotal)}
-      <div class="em-sep"></div>
-      <div class="em-row"><span class="em-lbl">DD Max</span><span class="em-val" style="color:var(--red)">-${fmt(ea.maxDrawdown)} (${(ea.maxDrawdownPct||0).toFixed(1)}%)</span></div>
-    </div>
-    <div class="ea-rent" style="color:${rc}">${rent>=0?'+':''}${rent.toFixed(2)}%</div>
-    <div class="${isPremium?'ea-btns':'ea-btns free-lock'}">
-      <button class="btn-ea ${ea.isRunning?'fechar':'ligar'}" ${isPremium?'':'disabled'}
-        data-cmd="${ea.isRunning?'desligar':'ligar'}" data-magic="${ea.magic}">
-        ${ea.isRunning?'DESLIGAR':'LIGAR'}
-      </button>
-      <button class="btn-ea pausar" ${isPremium?'':'disabled'}
-        data-cmd="${ea.isPaused?'retomar':'pausar'}" data-magic="${ea.magic}">
-        ${ea.isPaused?'RETOMAR':'PAUSAR'}
-      </button>
-      <button class="btn-ea fechar" ${isPremium?'':'disabled'}
-        data-cmd="fechar" data-magic="${ea.magic}">FECHAR</button>
-    </div>
-  `;
-  // addEventListener — necessário para iOS Safari (onclick inline quebra)
-  if (isPremium) {
-    card.querySelectorAll('[data-cmd]').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        sendCommand(btn.getAttribute('data-cmd'), parseInt(btn.getAttribute('data-magic'), 10));
+  // /data — dados do dashboard
+  if(reqPath==='/data'){
+    const tok=qs.get('token')||req.headers['x-auth-token']||'';
+    if(tok!==PROXY_TOKEN){
+      const sess=await verifySession(tok);
+      if(!sess){sendJSON(res,401,{error:'Não autorizado'});return;}
+    }
+    return new Promise(resolve=>{
+      jbReq('GET',DATA_BIN,null,(err,code,data)=>{
+        if(err||code!==200){sendJSON(res,500,{error:'Sem dados'});resolve();return;}
+        try{sendJSON(res,200,JSON.parse(data));}
+        catch(e){sendJSON(res,500,{error:'Parse error'});}
+        resolve();
       });
     });
   }
-  return card;
-}
 
-function emRow(label, val, isOpen) {
-  const v = Number(val) || 0;
-  const c = v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--muted)';
-  const sign = v > 0 ? '+' : v < 0 ? '-' : '';
-  return `<div class="em-row">
-    <span class="em-lbl">${label}</span>
-    <span class="em-val" style="color:${c}">${sign}${fmt(v)}</span>
-  </div>`;
-}
-
-// ─── GRÁFICO ─────────────────────────────────────────────────────
-function buildChart(d) {
-  const section = el('div','chart-section');
-
-  // Header com título + legenda + filtros de período
-  const header = el('div','chart-header');
-  const left = el('div'); left.style.display='flex'; left.style.flexDirection='column'; left.style.gap='8px';
-  const title = el('div','chart-title'); title.textContent = 'LUCRO ACUMULADO';
-
-  // Filtros de período
-  const pf = el('div','period-filters');
-  const pfLabels = [['7D','7d'],['1M','1m'],['3M','3m'],['1A','1a'],['Tudo','all']];
-  pfLabels.forEach(([label, key]) => {
-    const btn = el('div','pf-btn'+(activePeriod===key?' active':''));
-    btn.textContent = label;
-    btn.addEventListener('click', () => {
-      activePeriod = key;
-      state.customFrom = null; state.customTo = null;
-      document.querySelectorAll('.pf-btn').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');
-      const fi=document.getElementById('dateFrom'); if(fi) fi.value='';
-      const ti=document.getElementById('dateTo');   if(ti) ti.value='';
-      initChart(d);
-      // Atualiza stats bar com o novo período
-      const sb = document.querySelector('.stats-bar');
-      if (sb) { const newSb = buildStatsBar(d); sb.replaceWith(newSb); }
+  // /update — EA envia dados
+  if(reqPath==='/update' && method==='POST'){
+    const tok=qs.get('token')||'';
+    if(tok!==PROXY_TOKEN){sendJSON(res,401,{error:'Não autorizado'});return;}
+    const body=await readBody(req);
+    return new Promise(resolve=>{
+      jbReq('PUT',DATA_BIN,JSON.parse(body),(err,code)=>{
+        sendJSON(res,err||code!==200?500:200,{ok:!err&&code===200});
+        resolve();
+      });
     });
-    pf.appendChild(btn);
-  });
-
-  // Separador
-  const sep = el('span'); sep.style.cssText='color:var(--bdr);padding:0 4px;align-self:center;font-size:14px';
-  sep.textContent='|'; pf.appendChild(sep);
-
-  // Campos De / Até
-  const dateWrap = el('div'); dateWrap.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap';
-  dateWrap.innerHTML=`
-    <span style="font-size:11px;color:var(--muted);font-weight:600">De</span>
-    <input id="dateFrom" type="date" style="background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);padding:3px 8px;font-size:11px;outline:none" value="${state.customFrom||''}">
-    <span style="font-size:11px;color:var(--muted);font-weight:600">Até</span>
-    <input id="dateTo" type="date" style="background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);padding:3px 8px;font-size:11px;outline:none" value="${state.customTo||''}">
-    <button onclick="applyDateRange()" style="background:var(--blue2);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer">Aplicar</button>
-  `;
-  pf.appendChild(dateWrap);
-
-  left.appendChild(title); left.appendChild(pf);
-
-  // Legenda clicável
-  const legend = el('div','chart-legend');
-  d.eas.forEach((ea, idx) => {
-    const c = EA_COLORS[idx%EA_COLORS.length];
-    const nm = ea.name || ('Magic#'+ea.magic);
-    const vis = state.visibleEAs[ea.magic] !== false;
-    const btn = el('div', 'leg-btn ' + (vis?'active':'inactive'));
-    btn.style.borderColor = c; btn.style.color = c;
-    btn.innerHTML = `<span class="leg-dot" style="background:${c}"></span>${nm}`;
-    btn.addEventListener('click', () => {
-      state.visibleEAs[ea.magic] = !state.visibleEAs[ea.magic];
-      updateChart(d);
-      btn.className = 'leg-btn ' + (state.visibleEAs[ea.magic]?'active':'inactive');
-      // Atualiza stats bar com o EA selecionado
-      const sb = document.querySelector('.stats-bar');
-      if (sb) { const newSb = buildStatsBar(d); sb.replaceWith(newSb); }
-    });
-    legend.appendChild(btn);
-  });
-
-  header.appendChild(left); header.appendChild(legend);
-  section.appendChild(header);
-
-  // Canvas — dimensões explícitas para iOS Safari
-  const wrap = el('div','chart-canvas-wrap');
-  const canvas = document.createElement('canvas');
-  canvas.id = 'chart';
-  canvas.style.cssText = 'display:block;width:100%;height:100%;-webkit-tap-highlight-color:transparent';
-  wrap.appendChild(canvas); section.appendChild(wrap);
-  setTimeout(() => initChart(d), 100); // delay maior para iOS renderizar o DOM
-  return section;
-}
-
-function initChart(d) {
-  const canvas = document.getElementById('chart');
-  if (!canvas) return;
-  if (state.chart) { state.chart.destroy(); state.chart = null; }
-
-  const maxPts = 200;
-  const now = Date.now();
-
-  // ── Range de datas EXATO baseado no período selecionado ──────────
-  let realStart, realEnd = now;
-
-  if (state.customFrom || state.customTo) {
-    realStart = state.customFrom ? new Date(state.customFrom).getTime() : null;
-    realEnd   = state.customTo   ? new Date(state.customTo + 'T23:59:59').getTime() : now;
-    if (!realStart) {
-      d.eas.forEach(ea => { if (ea.equityStart) {
-        const s = ea.equityStart * 1000;
-        if (!realStart || s < realStart) realStart = s; } });
-    }
-  } else if (activePeriod && PERIODS[activePeriod]) {
-    realEnd   = now;
-    realStart = now - PERIODS[activePeriod] * 86400000;
-  } else {
-    // "Tudo"
-    realStart = null;
-    d.eas.forEach(ea => { if (ea.equityStart) {
-      const s = ea.equityStart * 1000;
-      if (!realStart || s < realStart) realStart = s; } });
-    if (!realStart) realStart = now - 365 * 86400000;
   }
-  if (!realStart) realStart = now - 7 * 86400000;
 
-  // ── Filtra e mapeia pontos para o período selecionado ────────────
-  function filterPoints(ea) {
-    const pts = ea.equity;
-    if (!pts || pts.length < 1) return null;
+  // /command — comandos EA/Web
+  if(reqPath==='/command'){
+    const tok=qs.get('token')||req.headers['x-auth-token']||'';
+    if(tok!==PROXY_TOKEN){
+      const sess=await verifySession(tok);
+      if(!sess){sendJSON(res,401,{error:'Não autorizado'});return;}
+    }
+    if(method==='GET'){
+      return new Promise(resolve=>{
+        jbReq('GET',CMD_BIN,null,(err,code,data)=>{
+          try{sendJSON(res,200,JSON.parse(data));}
+          catch(e){sendJSON(res,200,{cmd:'none'});}
+          resolve();
+        });
+      });
+    }
+    if(method==='POST'){
+      const body=await readBody(req);
+      return new Promise(resolve=>{
+        jbReq('PUT',CMD_BIN,JSON.parse(body),(err,code)=>{
+          sendJSON(res,!err&&code===200?200:500,{ok:!err&&code===200});
+          resolve();
+        });
+      });
+    }
+  }
 
-    const dataStartMs = (ea.equityStart||0) * 1000;
-    const dataEndMs   = (ea.equityEnd  ||0) * 1000 || now;
-    if (!dataStartMs || dataEndMs <= dataStartMs) return null;
-
-    // ms por ponto na série recebida (curva diária = 1 ponto/dia)
-    const msPerPt = (dataEndMs - dataStartMs) / pts.length;
-    if (msPerPt <= 0) return null;
-
-    // Para cada posição X do gráfico (0..maxPts-1), calcula qual valor corresponde
-    const result = [];
-    let anyData = false;
-    for (let xi = 0; xi < maxPts; xi++) {
-      // Timestamp desta posição no gráfico
-      const tMs = realStart + (xi / (maxPts - 1)) * (realEnd - realStart);
-      // Índice correspondente na série do EA
-      const idx = (tMs - dataStartMs) / msPerPt;
-      if (idx < 0 || idx >= pts.length) {
-        result.push(null); // fora do range de dados
+  // /admin — painel admin
+  if(reqPath.startsWith('/admin')){
+    if(!adminAuth(req)){
+      res.writeHead(401,{'WWW-Authenticate':'Basic realm="Dashbot Admin"',...CORS});
+      res.end('Não autorizado'); return;
+    }
+    if((path==='/admin'||reqPath==='/admin/')&&method==='GET'){
+      const lics=await getLics(); const db=await getAuth();
+      const now=Date.now();
+      let rows=''; let stats={total:0,premium:0,trial:0,expired:0,active:0};
+      for(const [acct,lic] of Object.entries(lics)){
+        if(acct.startsWith('_')) continue;
+        const s=checkLic(lic); stats.total++;
+        if(s.plan==='premium')stats.premium++;
+        else if(s.plan==='trial')stats.trial++;
+        else stats.expired++;
+        if(lic.lastSeen&&now-lic.lastSeen<7*DAY_MS)stats.active++;
+        const hasPw=!!db.users?.[acct];
+        const bc=s.plan==='premium'?'#10b981':s.plan==='trial'?'#3b82f6':'#ef4444';
+        rows+=`<tr><td><code>${acct}</code></td><td>${lic.name||'—'}</td>
+          <td><span class="badge" style="background:${bc}">${s.plan}</span></td>
+          <td>${s.daysLeft||0}d</td>
+          <td>${lic.lastSeen?new Date(lic.lastSeen).toLocaleDateString('pt-BR'):'—'}</td>
+          <td>${hasPw?'✅':'❌'}</td>
+          <td>
+            <button class="btn-sm" onclick="renovar('${acct}','${lic.name||''}',1)">+1m</button>
+            <button class="btn-sm" onclick="renovar('${acct}','${lic.name||''}',3)">+3m</button>
+            <button class="btn-sm btn-red" onclick="revogar('${acct}')">Revogar</button>
+            <button class="btn-sm" onclick="resetPw('${acct}')">↺ Senha</button>
+          </td></tr>`;
+      }
+      const products=lics._products||[];
+      const prodRows=products.length?products.map(p=>`<tr>
+        <td><code>${p.id}</code></td><td>${p.name}</td><td>${p.type}</td>
+        <td>R$ ${p.price||'—'}</td><td>${p.trialDays||0}d</td><td>${p.active?'✅':'❌'}</td>
+        <td><button class="btn-sm btn-red" onclick="delProd('${p.id}')">✕</button></td>
+      </tr>`).join(''):'<tr><td colspan="7" style="color:#8b949e;text-align:center;padding:16px">Nenhum produto</td></tr>';
+      sendHTML(res,buildAdminHTML(rows,stats,prodRows));
+      return;
+    }
+    if(reqPath==='/admin/license'&&method==='POST'){
+      const body=await readBody(req);
+      let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+      const lics=await getLics(); const now=Date.now(); const key=String(d.account);
+      const ex=lics[key]; const base=(ex?.premiumEnd&&ex.premiumEnd>now)?ex.premiumEnd:now;
+      lics[key]={...(ex||{}),account:key,name:d.name||ex?.name||'',type:'premium',
+        trialStart:ex?.trialStart||now,trialEnd:ex?.trialEnd||(now+TRIAL_DAYS*DAY_MS),
+        premiumStart:ex?.premiumStart||now,premiumEnd:base+(parseInt(d.months)||1)*30*DAY_MS,
+        lastSeen:ex?.lastSeen||now,firstSeen:ex?.firstSeen||now};
+      const ok=await saveLics(lics);
+      sendJSON(res,ok?200:500,{ok,expiresStr:ptDate(lics[key].premiumEnd)});
+      return;
+    }
+    if(reqPath==='/admin/license'&&method==='DELETE'){
+      const body=await readBody(req);
+      let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+      const lics=await getLics();
+      if(lics[String(d.account)]){lics[String(d.account)].type='revoked';lics[String(d.account)].premiumEnd=0;lics[String(d.account)].trialEnd=0;}
+      sendJSON(res,await saveLics(lics)?200:500,{ok:true});
+      return;
+    }
+    if(reqPath==='/admin/manual'&&method==='POST'){
+      const body=await readBody(req);
+      let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+      const lics=await getLics(); const now=Date.now(); const key=String(d.account);
+      const ex=lics[key]; const daysMs=parseInt(d.days)*DAY_MS; let end,entry;
+      if(d.type==='trial_ext'){
+        end=now+daysMs;
+        entry={...(ex||{}),account:key,name:d.name||ex?.name||'',type:'trial',
+          trialStart:ex?.trialStart||now,trialEnd:end,lastSeen:ex?.lastSeen||now,firstSeen:ex?.firstSeen||now};
       } else {
-        // Interpolação linear entre pontos adjacentes
-        const lo = Math.floor(idx), hi = Math.min(Math.ceil(idx), pts.length - 1);
-        const v  = pts[lo] + (pts[hi] - pts[lo]) * (idx - lo);
-        result.push(v);
-        anyData = true;
+        const base=(ex?.premiumEnd&&ex.premiumEnd>now)?ex.premiumEnd:now; end=base+daysMs;
+        entry={...(ex||{}),account:key,name:d.name||ex?.name||'',type:'premium',
+          trialStart:ex?.trialStart||now,trialEnd:ex?.trialEnd||(now+TRIAL_DAYS*DAY_MS),
+          premiumStart:ex?.premiumStart||now,premiumEnd:end,
+          lastSeen:ex?.lastSeen||now,firstSeen:ex?.firstSeen||now,note:'Manual/Bonus'};
+      }
+      lics[key]=entry; const ok=await saveLics(lics);
+      sendJSON(res,ok?200:500,{ok,expiresStr:ptDate(end)});
+      return;
+    }
+    if(reqPath==='/admin/reset-password'&&method==='POST'){
+      const body=await readBody(req);
+      let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+      const db=await getAuth();
+      delete db.users[String(d.account)];
+      for(const k of Object.keys(db.tokens||{}))
+        if(db.tokens[k].account===String(d.account)) delete db.tokens[k];
+      sendJSON(res,await saveAuth(db)?200:500,{ok:true});
+      return;
+    }
+    if(reqPath==='/admin/products'){
+      const lics=await getLics();
+      if(method==='GET'){sendJSON(res,200,{products:lics._products||[]});return;}
+      if(method==='POST'){
+        const body=await readBody(req);
+        let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+        if(!d.name||!d.type){sendJSON(res,400,{error:'name e type obrigatórios'});return;}
+        if(!lics._products) lics._products=[];
+        const prod={id:'prod_'+Date.now(),name:d.name,type:d.type,
+          description:d.description||'',price:d.price||null,currency:d.currency||'BRL',
+          trialDays:d.trialDays||0,active:true,createdAt:Date.now()};
+        lics._products.push(prod);
+        const ok=await saveLics(lics);
+        sendJSON(res,ok?200:500,{ok,product:prod});
+        return;
+      }
+      if(method==='DELETE'){
+        const body=await readBody(req);
+        let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+        lics._products=(lics._products||[]).filter(p=>p.id!==d.id);
+        sendJSON(res,await saveLics(lics)?200:500,{ok:true});
+        return;
       }
     }
-    return anyData ? result : null;
-  }
-
-  const labels = Array.from({length:maxPts},(_,i)=>i);
-  let hasData = false;
-
-  const datasets = d.eas.map((ea, idx) => {
-    const c = EA_COLORS[idx%EA_COLORS.length];
-    const pts = filterPoints(ea);
-    if (pts) hasData = true;
-    // Alinha todos os datasets para o mesmo tamanho
-    const aligned = pts ? pts : null;
-    return {
-      label: ea.name || ('Magic#'+ea.magic),
-      data: aligned || Array(maxPts).fill(null),
-      borderColor: c,
-      borderWidth: 2,
-      pointRadius: 0,
-      tension: 0.3,
-      hidden: state.visibleEAs[ea.magic] === false || !pts,
-      fill: false,
-      spanGaps: false,
-    };
-  });
-
-  if (!hasData) {
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.fillStyle = '#8892b0';
-    ctx.font = '13px Inter,sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Sem dados no período selecionado', canvas.width/2, canvas.height/2);
+    sendJSON(res,404,{error:'Rota não encontrada'});
     return;
   }
 
-  // Labels diários — cada posição X corresponde a uma data exata
-  const spanMs = realEnd - realStart;
-  const dateLabels = [];
-  let lastLabel = '';
-  for (let i = 0; i < maxPts; i++) {
-    const ms = realStart + (i / (maxPts - 1)) * spanMs;
-    const dt = new Date(ms);
-    const lbl = String(dt.getDate()).padStart(2,'0') + '/' + String(dt.getMonth()+1).padStart(2,'0');
-    dateLabels.push(lbl !== lastLabel ? lbl : '');
-    if (lbl !== lastLabel) lastLabel = lbl;
-  }
+  sendJSON(res,404,{error:'Not found'});
 
-  const ctx = canvas.getContext('2d', {willReadFrequently: false});
-  if (!ctx) return; // iOS pode falhar silenciosamente
+}).listen(PORT, ()=>{
+  console.log('Dashbot Server v3 porta '+PORT);
+  // Keep-alive: ping a cada 14 minutos para evitar sleep no Render Free
+  setInterval(()=>{
+    const req = https.request({
+      hostname: 'dashbot.investidorbot.com',
+      path: '/ping', method: 'GET'
+    }, ()=>{}).on('error',()=>{});
+    req.end();
+  }, 14 * 60 * 1000);
+});
 
-  state.chart = new Chart(ctx, {
-    type:'line',
-    data:{ labels: dateLabels, datasets },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      layout:{padding:{left:0,right:0,top:4,bottom:0}},
-      animation:{duration:300},
-      plugins:{
-        legend:{display:false},
-        tooltip:{
-          mode:'index', intersect:false,
-          backgroundColor:'#0d0f1a',
-          titleColor:'#8892b0',
-          bodyColor:'#e8ecf4',
-          borderColor:'#288cff',
-          borderWidth:1,
-          callbacks:{
-            title: items => items[0]?.label || '',
-            label: c => {
-              if (c.raw === null) return null;
-              const val = Number(c.raw);
-              const sign = val >= 0 ? '+' : '';
-              return ` ${c.dataset.label}: ${sign}$ ${Math.abs(val).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-            }
-          }
-        }
-      },
-      scales:{
-        x:{
-          display:true,
-          grid:{color:'#1a1f3588',lineWidth:1},
-          ticks:{color:'#8892b0',font:{size:10,weight:'500'},maxTicksLimit:10,maxRotation:0}
-        },
-        y:{
-          grid:{color:'#1a1f3588',lineWidth:1},
-          ticks:{
-            color:'#8892b0',
-            font:{size:11,weight:'600'},
-            callback: v => {
-              const abs = Math.abs(v);
-              const sign = v >= 0 ? '+' : '-';
-              if (abs >= 1000000) return sign+'$'+(abs/1000000).toFixed(1)+'M';
-              if (abs >= 1000)    return sign+'$'+(abs/1000).toFixed(1)+'k';
-              return sign+'$'+abs.toFixed(0);
-            }
-          },
-          border:{color:'#2a3050'}
-        }
-      }
-    }
-  });
+// ── Admin HTML ────────────────────────────────────────────────────
+function buildAdminHTML(rows,stats,prodRows){
+return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashbot Admin v3</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#0d1117;color:#e6edf3;padding:20px}
+h1{color:#58a6ff;margin-bottom:4px;font-size:22px}
+.sub{color:#8b949e;font-size:13px;margin-bottom:20px}
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.stat{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px 20px;min-width:100px;text-align:center}
+.stat .n{font-size:26px;font-weight:700;color:#58a6ff}
+.stat .l{font-size:11px;color:#8b949e;text-transform:uppercase;margin-top:2px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px;margin-bottom:16px}
+.card-title{font-size:13px;font-weight:700;color:#58a6ff;margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:6px 8px;border-bottom:1px solid #30363d;color:#8b949e;font-size:10px;text-transform:uppercase}
+td{padding:6px 8px;border-bottom:1px solid #21262d;vertical-align:middle}
+tr:hover td{background:#1c2128}
+.badge{display:inline-block;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;color:#fff}
+.btn{background:#1f6feb;color:#fff;border:none;padding:7px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+.btn:hover{background:#388bfd}
+.btn-sm{background:#21262d;color:#e6edf3;border:1px solid #30363d;padding:3px 7px;border-radius:4px;cursor:pointer;font-size:10px;margin:1px}
+.btn-sm:hover{background:#30363d}
+.btn-red{color:#f85149!important}
+.form-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+.fg{display:flex;flex-direction:column;gap:3px}
+label{font-size:10px;color:#8b949e;font-weight:600;text-transform:uppercase}
+input,select{background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:5px 8px;border-radius:5px;font-size:12px}
+input:focus,select:focus{outline:none;border-color:#388bfd}
+.msg{padding:7px 12px;border-radius:6px;font-size:12px;margin-bottom:10px;display:none}
+.msg.ok{background:#0d2e1f;border:1px solid #10b981;color:#10b981}
+.msg.err{background:#2d1117;border:1px solid #f85149;color:#f85149}
+</style></head><body>
+<h1>🤖 Dashbot Admin v3</h1>
+<p class="sub">Licenças · Usuários · Produtos</p>
+<div class="stats">
+  <div class="stat"><div class="n">${stats.total}</div><div class="l">Total</div></div>
+  <div class="stat"><div class="n" style="color:#10b981">${stats.premium}</div><div class="l">Premium</div></div>
+  <div class="stat"><div class="n" style="color:#3b82f6">${stats.trial}</div><div class="l">Trial</div></div>
+  <div class="stat"><div class="n" style="color:#ef4444">${stats.expired}</div><div class="l">Expirados</div></div>
+  <div class="stat"><div class="n" style="color:#f0c800">${stats.active}</div><div class="l">Ativos 7d</div></div>
+</div>
+
+<div class="card">
+  <div class="card-title">➕ Ativar / Renovar Premium</div>
+  <div id="msg" class="msg"></div>
+  <div class="form-row">
+    <div class="fg"><label>Conta MT5</label><input type="number" id="iAcc" placeholder="12345678" style="width:130px"></div>
+    <div class="fg"><label>Nome</label><input type="text" id="iName" placeholder="João Silva" style="width:150px"></div>
+    <div class="fg"><label>Período</label><select id="iMon"><option value="1">1 mês</option><option value="3">3 meses</option><option value="6">6 meses</option><option value="12">12 meses</option></select></div>
+    <button class="btn" onclick="ativar()">✓ Ativar</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">🎁 Inserir Manualmente (Bônus / Trial)</div>
+  <div id="msg2" class="msg"></div>
+  <div class="form-row">
+    <div class="fg"><label>Conta MT5</label><input type="number" id="mAcc" placeholder="12345678" style="width:130px"></div>
+    <div class="fg"><label>Nome</label><input type="text" id="mName" placeholder="Nome" style="width:150px"></div>
+    <div class="fg"><label>Tipo</label><select id="mType"><option value="trial_ext">Trial estendido</option><option value="bonus">Bônus Premium</option></select></div>
+    <div class="fg"><label>Dias</label><input type="number" id="mDays" value="30" min="1" max="365" style="width:65px"></div>
+    <button class="btn" style="background:#10b981" onclick="inserirManual()">➕ Inserir</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">📦 Produtos (EAs, Indicadores, etc.)</div>
+  <div id="msg3" class="msg"></div>
+  <div class="form-row" style="margin-bottom:12px">
+    <div class="fg"><label>Nome</label><input type="text" id="pName" placeholder="Hulk EA v2" style="width:140px"></div>
+    <div class="fg"><label>Tipo</label><select id="pType"><option value="ea">Expert Advisor</option><option value="indicator">Indicador</option><option value="dashboard">Dashboard</option><option value="other">Outro</option></select></div>
+    <div class="fg"><label>Preço R$</label><input type="number" id="pPrice" placeholder="99.90" style="width:90px"></div>
+    <div class="fg"><label>Trial (dias)</label><input type="number" id="pTrial" value="0" style="width:65px"></div>
+    <div class="fg"><label>Descrição</label><input type="text" id="pDesc" placeholder="Opcional" style="width:180px"></div>
+    <button class="btn" onclick="addProd()">+ Produto</button>
+  </div>
+  <table><thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th>Preço</th><th>Trial</th><th>Ativo</th><th></th></tr></thead>
+  <tbody>${prodRows}</tbody></table>
+</div>
+
+<div class="card">
+  <div class="card-title">👥 Usuários Registrados</div>
+  <table><thead><tr><th>Conta</th><th>Nome</th><th>Plano</th><th>Dias</th><th>Último acesso</th><th>Senha</th><th>Ações</th></tr></thead>
+  <tbody>${rows}</tbody></table>
+</div>
+
+<script>
+const AUTH='Basic '+btoa('${ADMIN_USER}:${ADMIN_PASS}');
+function showMsg(id,msg,ok){
+  const el=document.getElementById(id);
+  el.textContent=msg; el.className='msg '+(ok?'ok':'err'); el.style.display='block';
+  setTimeout(()=>el.style.display='none',4000);
 }
-
-function updateChart(d) {
-  if (!state.chart) return;
-  state.chart.data.datasets.forEach((ds, idx) => {
-    const ea = d.eas[idx];
-    if (ea) ds.hidden = state.visibleEAs[ea.magic] === false;
-  });
-  state.chart.update();
+async function api(method,path,body){
+  const r=await fetch(path,{method,headers:{'Content-Type':'application/json','Authorization':AUTH},body:body?JSON.stringify(body):undefined});
+  return r.json();
 }
-
-// ─── META/STOP CHECK ─────────────────────────────────────────────
-function checkDailyLimits(d) {
-  if (!state.metaDia && !state.stopDia) return;
-  const totDay = d.eas.reduce((s,e)=>s+e.profitDay,0);
-  if (state.metaDia > 0 && totDay >= state.metaDia && !state.metaAtingida) {
-    state.metaAtingida = true;
-    if (state.isPremium) { d.eas.forEach((_,i)=>sendCommand('fechar',d.eas[i].magic)); }
-  }
-  if (state.stopDia > 0 && totDay <= -state.stopDia && !state.stopAtingido) {
-    state.stopAtingido = true;
-    if (state.isPremium) { d.eas.forEach((_,i)=>sendCommand('fechar',d.eas[i].magic)); }
-  }
+async function ativar(){
+  const r=await api('POST','/admin/license',{account:document.getElementById('iAcc').value,name:document.getElementById('iName').value,months:parseInt(document.getElementById('iMon').value)});
+  if(r.ok){showMsg('msg','✅ Ativado até '+r.expiresStr,true);setTimeout(()=>location.reload(),1200);}
+  else showMsg('msg','❌ '+(r.error||'Erro'),false);
 }
-
-// ─── UTILS ───────────────────────────────────────────────────────
-function el(tag, cls='') {
-  const e = document.createElement(tag.includes(' ')?'div':tag);
-  if (cls) e.className = cls;
-  return e;
+async function renovar(a,n,m){
+  const r=await api('POST','/admin/license',{account:a,name:n,months:m});
+  if(r.ok){showMsg('msg','✅ '+r.expiresStr,true);setTimeout(()=>location.reload(),1200);}
+  else showMsg('msg','❌ '+(r.error||'Erro'),false);
 }
-
-function fmt(v) {
-  return '$ '+Math.abs(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+async function revogar(a){
+  if(!confirm('Revogar '+a+'?')) return;
+  const r=await api('DELETE','/admin/license',{account:a});
+  if(r.ok) location.reload();
 }
-
-// ─── INIT ────────────────────────────────────────────────────────
-// Inicialização controlada pelo sistema de auth (window.onload acima)
-</script>
-</body>
-</html>
+async function resetPw(a){
+  if(!confirm('Resetar senha de '+a+'? O usuário refará o primeiro acesso.')) return;
+  const r=await api('POST','/admin/reset-password',{account:a});
+  if(r.ok) showMsg('msg','✅ Senha resetada',true);
+}
+async function inserirManual(){
+  const r=await api('POST','/admin/manual',{account:document.getElementById('mAcc').value,name:document.getElementById('mName').value,type:document.getElementById('mType').value,days:parseInt(document.getElementById('mDays').value)});
+  if(r.ok){showMsg('msg2','✅ Até '+r.expiresStr,true);setTimeout(()=>location.reload(),1200);}
+  else showMsg('msg2','❌ '+(r.error||'Erro'),false);
+}
+async function addProd(){
+  const r=await api('POST','/admin/products',{name:document.getElementById('pName').value,type:document.getElementById('pType').value,price:parseFloat(document.getElementById('pPrice').value)||null,trialDays:parseInt(document.getElementById('pTrial').value)||0,description:document.getElementById('pDesc').value});
+  if(r.ok){showMsg('msg3','✅ Produto adicionado!',true);setTimeout(()=>location.reload(),1000);}
+  else showMsg('msg3','❌ '+(r.error||'Erro'),false);
+}
+async function delProd(id){
+  if(!confirm('Remover?')) return;
+  const r=await api('DELETE','/admin/products',{id});
+  if(r.ok) location.reload();
+}
+</script></body></html>`;
+}
