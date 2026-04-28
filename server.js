@@ -451,7 +451,17 @@ http.createServer(async (req, res) => {
 
   sendJSON(res,404,{error:'Not found'});
 
-}).listen(PORT, ()=>console.log('Dashbot Server v3 porta '+PORT));
+}).listen(PORT, ()=>{
+  console.log('Dashbot Server v3 porta '+PORT);
+  // Keep-alive: ping a cada 14 minutos para evitar sleep no Render Free
+  setInterval(()=>{
+    const req = https.request({
+      hostname: 'dashbot.investidorbot.com',
+      path: '/ping', method: 'GET'
+    }, ()=>{}).on('error',()=>{});
+    req.end();
+  }, 14 * 60 * 1000);
+});
 
 // ── Admin HTML ────────────────────────────────────────────────────
 function buildAdminHTML(rows,stats,prodRows){
