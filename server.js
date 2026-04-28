@@ -320,33 +320,70 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // /data — dados do dashboard
+  // /data — dados do dashboard (filtrado por conta da sessão)
   if(reqPath==='/data'){
     const tok=qs.get('token')||req.headers['x-auth-token']||'';
+    let sessionAccount=null;
     if(tok!==PROXY_TOKEN){
       const sess=await verifySession(tok);
       if(!sess){sendJSON(res,401,{error:'Não autorizado'});return;}
+      sessionAccount=sess.account;
+    } else {
+      // EA acessando — pode passar account como query param
+      sessionAccount=qs.get('account')||null;
     }
     return new Promise(resolve=>{
-      jbReq('GET',DATA_BIN,null,(err,code,data)=>{
+      jbReq('GET',DATA_BIN,null,(err,code,rawData)=>{
         if(err||code!==200){sendJSON(res,500,{error:'Sem dados'});resolve();return;}
-        try{sendJSON(res,200,JSON.parse(data));}
-        catch(e){sendJSON(res,500,{error:'Parse error'});}
+        try{
+          const all=JSON.parse(rawData);
+          if(sessionAccount){
+            // Retorna apenas dados da conta do usuário logado
+            const acctData=all[sessionAccount]||all; // fallback se ainda formato antigo
+            // Se os dados têm a conta diretamente (formato antigo), filtra EAs
+            if(acctData.eas && !all[sessionAccount]){
+              // Formato antigo — um único objeto com todos os EAs
+              // Não conseguimos filtrar sem account no EA — retorna tudo por ora
+              sendJSON(res,200,acctData);
+            } else {
+              sendJSON(res,200,acctData.eas?acctData:{eas:[],ts:Date.now()});
+            }
+          } else {
+            sendJSON(res,200,all);
+          }
+        }catch(e){sendJSON(res,500,{error:'Parse error'});}
         resolve();
       });
     });
   }
 
-  // /update — EA envia dados
+  // /update — EA envia dados (indexado por account)
   if(reqPath==='/update' && method==='POST'){
     const tok=qs.get('token')||'';
     if(tok!==PROXY_TOKEN){sendJSON(res,401,{error:'Não autorizado'});return;}
     const body=await readBody(req);
+    let payload;
+    try{payload=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+    const account=payload.account||qs.get('account')||null;
     return new Promise(resolve=>{
-      jbReq('PUT',DATA_BIN,JSON.parse(body),(err,code)=>{
-        sendJSON(res,err||code!==200?500:200,{ok:!err&&code===200});
-        resolve();
-      });
+      if(account){
+        // Formato novo: salva indexado por conta
+        jbReq('GET',DATA_BIN,null,(err,code,rawData)=>{
+          let all={};
+          if(!err&&code===200) try{all=JSON.parse(rawData);}catch(e){}
+          all[account]=payload;
+          jbReq('PUT',DATA_BIN,all,(err2,code2)=>{
+            sendJSON(res,!err2&&code2===200?200:500,{ok:!err2&&code2===200});
+            resolve();
+          });
+        });
+      } else {
+        // Formato antigo: salva direto (compatibilidade)
+        jbReq('PUT',DATA_BIN,payload,(err,code)=>{
+          sendJSON(res,err||code!==200?500:200,{ok:!err&&code===200});
+          resolve();
+        });
+      }
     });
   }
 
