@@ -524,11 +524,11 @@ http.createServer(async (req, res) => {
   console.log('Dashbot Server v3 porta '+PORT);
   // Keep-alive: ping a cada 14 minutos para evitar sleep no Render Free
   setInterval(()=>{
-    const req = https.request({
+    const pingReq = https.request({
       hostname: 'dashbot.investidorbot.com',
       path: '/ping', method: 'GET'
     }, ()=>{}).on('error',()=>{});
-    req.end();
+    pingReq.end();
   }, 14 * 60 * 1000);
 });
 
