@@ -400,15 +400,16 @@ function startDashboard() {
   setInterval(fetchData, CONFIG.pollMs);
 }
 
-// ─── INICIALIZAÇÃO ───────────────────────────────────────────────
-window.addEventListener('load', function() {
-  // Primeiro acesso via MT5 com setupToken — cadastra senha
+// ─── INICIALIZAÇÃO — executa imediatamente ────────────────────────
+(function init() {
+  // Mostra tela de login/cadastro IMEDIATAMENTE, sem esperar Chart.js
   if(setupTokenURL && accountURL) {
+    // Primeiro acesso via MT5 com setupToken — cadastra senha
     showLoginScreen({setupToken:setupTokenURL, account:accountURL});
     return;
   }
-  // Tem sessão salva válida — entra direto
   if(authState.sessionToken) {
+    // Tem sessão — verifica no servidor
     var xhr = new XMLHttpRequest();
     xhr.open('GET', CONFIG.proxyUrl+'/auth/verify?token='+authState.sessionToken, true);
     xhr.onload = function() {
@@ -419,12 +420,14 @@ window.addEventListener('load', function() {
       } catch(e){ showLoginScreen({account:accountURL||''}); }
     };
     xhr.onerror = function(){ showLoginScreen({account:accountURL||''}); };
+    xhr.timeout = 8000;
+    xhr.ontimeout = function(){ showLoginScreen({account:accountURL||''}); };
     xhr.send();
   } else {
     // Sem sessão — mostra login com conta pré-preenchida se veio da URL
     showLoginScreen({account:accountURL||''});
   }
-});
+})();
 
 // Filtro de período ativo
 var activePeriod = 'all';
