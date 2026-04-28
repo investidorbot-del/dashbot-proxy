@@ -230,8 +230,18 @@ http.createServer(async (req, res) => {
     let data; try{data=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
     const {account}=data;
     if(!account){sendJSON(res,400,{error:'account obrigatório'});return;}
-    const lics=await getLics(); const s=checkLic(lics[account]);
+
+    const lics=await getLics();
+    const now=Date.now();
+    // Cria trial automaticamente se conta não existe
+    if(!lics[account]){
+      lics[account]={account,type:'trial',trialStart:now,
+        trialEnd:now+TRIAL_DAYS*DAY_MS,firstSeen:now,lastSeen:now};
+      await saveLics(lics);
+    }
+    const s=checkLic(lics[account]);
     if(!s.valid){sendJSON(res,403,{error:'Licença expirada',expired:true});return;}
+
     const db=await getAuth();
     const setupToken=genToken(account);
     if(!db.tokens) db.tokens={};
