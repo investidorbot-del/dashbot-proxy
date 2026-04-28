@@ -189,20 +189,32 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // /validate — EA valida licença
+  // /validate — EA valida licença + auto-atribui produto Dashbot
   if(reqPath==='/validate'){
     const account = qs.get('account')||'';
     const lics = await getLics();
     const now  = Date.now();
+    // Garante produto Dashbot existe no catálogo
+    if(!lics._products) lics._products=[];
+    if(!lics._products.find(p=>p.id==='prod_dashbot'))
+      lics._products.push({id:'prod_dashbot',name:'Dashbot',type:'dashboard',
+        description:'Painel de monitoramento',active:true,createdAt:now});
     let lic = lics[account];
     if(!lic){
-      lic={account,type:'trial',trialStart:now,trialEnd:now+TRIAL_DAYS*DAY_MS,firstSeen:now,lastSeen:now};
-      lics[account]=lic; await saveLics(lics);
+      lic={account,type:'trial',trialStart:now,trialEnd:now+TRIAL_DAYS*DAY_MS,
+        firstSeen:now,lastSeen:now,products:[]};
+      lics[account]=lic;
     } else {
-      lics[account].lastSeen=now; await saveLics(lics);
+      lics[account].lastSeen=now;
     }
-    const s=checkLic(lic);
-    sendJSON(res,200,{...s,account,trialStart:lic.trialStart,trialEnd:lic.trialEnd||null,premiumEnd:lic.premiumEnd||null});
+    // Auto-atribui Dashbot ao usuário
+    if(!lics[account].products) lics[account].products=[];
+    if(!lics[account].products.find(p=>p.id==='prod_dashbot'))
+      lics[account].products.push({id:'prod_dashbot',name:'Dashbot',assignedAt:now});
+    await saveLics(lics);
+    const s=checkLic(lics[account]);
+    sendJSON(res,200,{...s,account,trialStart:lic.trialStart,
+      trialEnd:lic.trialEnd||null,premiumEnd:lic.premiumEnd||null});
     return;
   }
 
@@ -457,14 +469,31 @@ http.createServer(async (req, res) => {
       }
       const products=lics._products||[];
       const prodRows=products.length?products.map(p=>`<tr>
-        <td><code style="font-size:10px">${p.id}</code></td><td>${p.name}</td><td>${p.type}</td>
-        <td>R$ ${p.price||'—'}</td><td>${p.trialDays||0}d</td>
-        <td>Min:${p.minLots||0} Max:${p.maxLots||0}</td>
-        <td>${p.instances||1}</td>
-        <td>${p.active?'✅':'❌'}</td>
-        <td><button class="btn-sm btn-red" onclick="delProd('${p.id}')">✕ Remover</button></td>
-      </tr>`).join(''):'<tr><td colspan="9" style="color:#8b949e;text-align:center;padding:16px">Nenhum produto cadastrado</td></tr>';
+        <td><code style="font-size:10px">${p.id}</code></td>
+        <td><strong>${p.name}</strong></td>
+        <td>${p.type}</td>
+        <td style="color:#8b949e">${p.description||'—'}</td>
+        <td><button class="btn-sm btn-r" onclick="delProd('${p.id}')">✕ Remover</button></td>
+      </tr>`).join(''):'<tr><td colspan="5" style="color:#8b949e;text-align:center;padding:16px">Nenhum produto</td></tr>';
       sendHTML(res,buildAdminHTML(rows,stats,prodRows,JSON.stringify(products)));
+      return;
+    }
+    // POST register new user manually
+    if(reqPath==='/admin/register'&&method==='POST'){
+      const body=await readBody(req);
+      let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+      if(!d.account){sendJSON(res,400,{error:'Conta MT5 obrigatória'});return;}
+      const lics=await getLics(); const now=Date.now(); const key=String(d.account);
+      if(lics[key]){sendJSON(res,409,{error:'Conta já existe'});return;}
+      lics[key]={account:key,name:d.name||'',email:d.email||'',phone:d.phone||'',
+        type:'trial',trialStart:now,trialEnd:now+TRIAL_DAYS*DAY_MS,
+        firstSeen:now,lastSeen:0,products:[]};
+      if(!lics._products) lics._products=[];
+      if(!lics._products.find(p=>p.id==='prod_dashbot'))
+        lics._products.push({id:'prod_dashbot',name:'Dashbot',type:'dashboard',description:'Painel de monitoramento',active:true,createdAt:now});
+      lics[key].products=[{id:'prod_dashbot',name:'Dashbot',assignedAt:now}];
+      const ok=await saveLics(lics);
+      sendJSON(res,ok?200:500,{ok,account:key});
       return;
     }
     if(reqPath==='/admin/license'&&method==='POST'){
@@ -528,19 +557,22 @@ http.createServer(async (req, res) => {
       sendJSON(res,200,{account,name:lic.name||'',email:lic.email||'',phone:lic.phone||'',hasPw,products:lic.products||[]});
       return;
     }
-    // POST assign product to user
+    // POST assign product to user with per-user settings
     if(reqPath==='/admin/user-product'&&method==='POST'){
       const body=await readBody(req);
       let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
       const lics=await getLics(); const key=String(d.account);
       if(!lics[key]){sendJSON(res,404,{error:'Usuário não encontrado'});return;}
       if(!lics[key].products) lics[key].products=[];
-      // Avoid duplicate
-      if(!lics[key].products.find(p=>p.id===d.productId)){
-        const allProds=lics._products||[];
-        const prod=allProds.find(p=>p.id===d.productId);
-        if(prod) lics[key].products.push({id:prod.id,name:prod.name,assignedAt:Date.now()});
-      }
+      const existing=lics[key].products.findIndex(p=>p.id===d.productId);
+      const entry={
+        id:d.productId, name:d.name||d.productId, assignedAt:Date.now(),
+        minLots:parseFloat(d.minLots)||0, maxLots:parseFloat(d.maxLots)||0,
+        instances:parseInt(d.instances)||1,
+        accountReal:d.accountReal||'', accountDemo:d.accountDemo||''
+      };
+      if(existing>=0) lics[key].products[existing]=entry;
+      else lics[key].products.push(entry);
       const ok=await saveLics(lics);
       sendJSON(res,ok?200:500,{ok});
       return;
@@ -646,51 +678,50 @@ http.createServer(async (req, res) => {
 
 // ── Admin HTML ────────────────────────────────────────────────────
 function buildAdminHTML(rows,stats,prodRows,productsJson){
-const prodsJs = productsJson||'[]';
+const prodsJs=productsJson||'[]';
 return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dashbot Admin v3</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;background:#0d1117;color:#e6edf3;padding:16px}
-h1{color:#58a6ff;margin-bottom:4px;font-size:20px}
-.sub{color:#8b949e;font-size:12px;margin-bottom:16px}
-.stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
-.stat{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px 16px;min-width:90px;text-align:center}
-.stat .n{font-size:22px;font-weight:700;color:#58a6ff}
-.stat .l{font-size:10px;color:#8b949e;text-transform:uppercase;margin-top:2px}
-.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:14px;margin-bottom:14px}
-.card-title{font-size:12px;font-weight:700;color:#58a6ff;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em}
-.form-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px}
+body{font-family:system-ui,sans-serif;background:#0d1117;color:#e6edf3;padding:16px;font-size:13px}
+h1{color:#58a6ff;margin-bottom:2px;font-size:20px}
+.sub{color:#8b949e;font-size:12px;margin-bottom:14px}
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.stat{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:8px 14px;min-width:80px;text-align:center}
+.stat .n{font-size:20px;font-weight:700;color:#58a6ff}
+.stat .l{font-size:10px;color:#8b949e;text-transform:uppercase}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:12px;margin-bottom:12px}
+.card-title{font-size:11px;font-weight:700;color:#58a6ff;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px}
 .fg{display:flex;flex-direction:column;gap:3px}
 label{font-size:10px;color:#8b949e;font-weight:600;text-transform:uppercase}
-input,select{background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:5px 8px;border-radius:5px;font-size:12px}
-input:focus,select:focus{outline:none;border-color:#388bfd}
+input,select,textarea{background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:5px 8px;border-radius:5px;font-size:12px}
 input[type=date]{color-scheme:dark}
+input:focus,select:focus{outline:none;border-color:#388bfd}
 .btn{background:#1f6feb;color:#fff;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600}
 .btn:hover{background:#388bfd}
-.btn-green{background:#10b981}
-.btn-green:hover{background:#059669}
-.btn-sm{background:#21262d;color:#e6edf3;border:1px solid #30363d;padding:2px 6px;border-radius:4px;cursor:pointer;font-size:10px;margin:1px;white-space:nowrap}
-.btn-sm:hover{background:#30363d}
-.btn-red{color:#f85149!important}
+.btn-g{background:#10b981}.btn-g:hover{background:#059669}
+.btn-sm{background:#21262d;color:#e6edf3;border:1px solid #30363d;padding:2px 7px;border-radius:4px;cursor:pointer;font-size:10px;margin:1px;white-space:nowrap}
+.btn-sm:hover{background:#30363d}.btn-r{color:#f85149!important}
 .badge{display:inline-block;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;color:#fff}
 .msg{padding:6px 10px;border-radius:5px;font-size:12px;margin-bottom:8px;display:none}
 .msg.ok{background:#0d2e1f;border:1px solid #10b981;color:#10b981}
 .msg.err{background:#2d1117;border:1px solid #f85149;color:#f85149}
-table{width:100%;border-collapse:collapse;font-size:11px}
+table{width:100%;border-collapse:collapse}
 th{text-align:left;padding:6px 8px;border-bottom:1px solid #30363d;color:#8b949e;font-size:10px;text-transform:uppercase;white-space:nowrap}
-td{padding:5px 8px;border-bottom:1px solid #21262d;vertical-align:middle}
+td{padding:5px 8px;border-bottom:1px solid #21262d;vertical-align:top}
 tr:hover td{background:#1c2128}
-.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+.tag{background:#1e2438;padding:2px 6px;border-radius:4px;font-size:10px;margin:1px;display:inline-block}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;align-items:center;justify-content:center}
 .modal-bg.open{display:flex}
-.modal{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;min-width:320px;max-width:480px;width:90%}
-.modal h3{color:#58a6ff;margin-bottom:16px;font-size:15px}
-.modal .form-row{margin-bottom:12px}
-.modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.modal{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px;width:90%;max-width:500px;max-height:90vh;overflow-y:auto}
+.modal h3{color:#58a6ff;margin-bottom:14px;font-size:14px}
+.mbtn{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
 </style></head><body>
 <h1>🤖 Dashbot Admin v3</h1>
 <p class="sub">Licenças · Usuários · Produtos</p>
+
 <div class="stats">
   <div class="stat"><div class="n">${stats.total}</div><div class="l">Total</div></div>
   <div class="stat"><div class="n" style="color:#10b981">${stats.premium}</div><div class="l">Premium</div></div>
@@ -699,291 +730,165 @@ tr:hover td{background:#1c2128}
   <div class="stat"><div class="n" style="color:#f0c800">${stats.active}</div><div class="l">Ativos 7d</div></div>
 </div>
 
-<!-- Modais -->
-<div class="modal-bg" id="modalLic">
-  <div class="modal">
-    <h3>📅 Gerenciar Licença</h3>
-    <div id="msgLic" class="msg"></div>
-    <div class="form-row"><div class="fg"><label>Conta</label><input id="licAcct" readonly style="opacity:.7;width:120px"></div>
-    <div class="fg"><label>Nome</label><input id="licName" style="width:150px"></div></div>
-    <div class="form-row">
-      <div class="fg"><label>Atalhos</label>
-        <div style="display:flex;gap:4px">
-          <button class="btn-sm" onclick="licAddMonths(1)">+1m</button>
-          <button class="btn-sm" onclick="licAddMonths(3)">+3m</button>
-          <button class="btn-sm" onclick="licAddMonths(6)">+6m</button>
-          <button class="btn-sm" onclick="licAddMonths(12)">+1a</button>
-        </div>
-      </div>
+<!-- MODAIS -->
+<div class="modal-bg" id="mLic"><div class="modal">
+  <h3>📅 Gerenciar Licença</h3><div id="msgLic" class="msg"></div>
+  <div class="row"><div class="fg"><label>Conta</label><input id="lAcct" readonly style="width:120px"></div>
+  <div class="fg"><label>Nome</label><input id="lName" style="width:160px"></div></div>
+  <div class="row"><div class="fg"><label>Atalhos rápidos</label>
+    <div style="display:flex;gap:4px">
+      <button class="btn-sm" onclick="lAdd(1,'m')">+1m</button>
+      <button class="btn-sm" onclick="lAdd(3,'m')">+3m</button>
+      <button class="btn-sm" onclick="lAdd(6,'m')">+6m</button>
+      <button class="btn-sm" onclick="lAdd(12,'m')">+1a</button>
+    </div></div></div>
+  <div class="row"><div class="fg"><label>Data de expiração</label><input type="date" id="lDate" style="width:160px"></div></div>
+  <div class="mbtn"><button class="btn-sm" onclick="cm('mLic')">Cancelar</button>
+  <button class="btn btn-g" onclick="saveLic()">✓ Salvar</button></div>
+</div></div>
+
+<div class="modal-bg" id="mBonus"><div class="modal">
+  <h3>🎁 Bônus / Trial</h3><div id="msgBonus" class="msg"></div>
+  <div class="row"><div class="fg"><label>Conta</label><input id="bAcct" readonly style="width:120px"></div>
+  <div class="fg"><label>Tipo</label><select id="bType" style="width:160px"><option value="trial_ext">Trial estendido</option><option value="bonus">Bônus Premium</option></select></div></div>
+  <div class="row"><div class="fg"><label>Atalhos</label>
+    <div style="display:flex;gap:4px">
+      <button class="btn-sm" onclick="bAdd(7)">+7d</button>
+      <button class="btn-sm" onclick="bAdd(15)">+15d</button>
+      <button class="btn-sm" onclick="bAdd(30)">+30d</button>
+    </div></div></div>
+  <div class="row"><div class="fg"><label>Data de expiração</label><input type="date" id="bDate" style="width:160px"></div></div>
+  <div class="mbtn"><button class="btn-sm" onclick="cm('mBonus')">Cancelar</button>
+  <button class="btn btn-g" onclick="saveBonus()">✓ Aplicar</button></div>
+</div></div>
+
+<div class="modal-bg" id="mEdit"><div class="modal">
+  <h3>✏️ Editar Usuário</h3><div id="msgEdit" class="msg"></div>
+  <div class="row"><div class="fg"><label>Conta MT5</label><input id="eAcct" readonly style="width:120px"></div></div>
+  <div class="row"><div class="fg" style="flex:1"><label>Nome completo</label><input id="eName" style="width:100%"></div></div>
+  <div class="row"><div class="fg" style="flex:1"><label>E-mail</label><input id="eEmail" type="email" style="width:100%"></div></div>
+  <div class="row"><div class="fg" style="flex:1"><label>Telefone / WhatsApp</label><input id="ePhone" style="width:100%"></div></div>
+  <div class="mbtn"><button class="btn-sm" onclick="cm('mEdit')">Cancelar</button>
+  <button class="btn btn-g" onclick="saveEdit()">✓ Salvar</button></div>
+</div></div>
+
+<div class="modal-bg" id="mProd"><div class="modal">
+  <h3>📦 Atribuir Produto ao Usuário</h3><div id="msgProd" class="msg"></div>
+  <div class="row"><div class="fg"><label>Conta MT5</label><input id="pAcct" readonly style="width:120px"></div>
+  <div class="fg" style="flex:1"><label>Produto</label><select id="pProdSel" style="width:100%"><option value="">Selecione...</option></select></div></div>
+  <div style="border-top:1px solid #30363d;margin:12px 0;padding-top:12px">
+    <div style="font-size:10px;color:#58a6ff;font-weight:700;text-transform:uppercase;margin-bottom:8px">Configurações deste usuário</div>
+    <div class="row">
+      <div class="fg"><label>Lote mínimo</label><input type="number" id="pMinL" value="0" step="0.01" style="width:80px" placeholder="0 = sem limite"></div>
+      <div class="fg"><label>Lote máximo</label><input type="number" id="pMaxL" value="0" step="0.01" style="width:80px" placeholder="0 = sem limite"></div>
+      <div class="fg"><label>Instâncias</label><input type="number" id="pInst" value="1" min="1" style="width:70px"></div>
     </div>
-    <div class="form-row">
-      <div class="fg"><label>Data de expiração</label><input type="date" id="licDate" style="width:160px"></div>
-    </div>
-    <div class="modal-btns">
-      <button class="btn-sm" onclick="closeModal('modalLic')">Cancelar</button>
-      <button class="btn btn-green" onclick="saveLic()">✓ Salvar</button>
+    <div class="row">
+      <div class="fg" style="flex:1"><label>Conta Real MT5</label><input id="pReal" style="width:100%" placeholder="Número da conta real"></div>
+      <div class="fg" style="flex:1"><label>Conta Demo MT5</label><input id="pDemo" style="width:100%" placeholder="Número da conta demo"></div>
     </div>
   </div>
-</div>
+  <div class="mbtn"><button class="btn-sm" onclick="cm('mProd')">Cancelar</button>
+  <button class="btn btn-g" onclick="saveProd()">✓ Atribuir</button></div>
+</div></div>
 
-<div class="modal-bg" id="modalBonus">
-  <div class="modal">
-    <h3>🎁 Bônus / Trial</h3>
-    <div id="msgBonus" class="msg"></div>
-    <div class="form-row">
-      <div class="fg"><label>Conta</label><input id="bonAcct" readonly style="opacity:.7;width:120px"></div>
-      <div class="fg"><label>Tipo</label><select id="bonType" style="width:160px"><option value="trial_ext">Trial estendido</option><option value="bonus">Bônus Premium</option></select></div>
-    </div>
-    <div class="form-row">
-      <div class="fg"><label>Atalhos</label>
-        <div style="display:flex;gap:4px">
-          <button class="btn-sm" onclick="bonAddDays(7)">+7d</button>
-          <button class="btn-sm" onclick="bonAddDays(15)">+15d</button>
-          <button class="btn-sm" onclick="bonAddDays(30)">+30d</button>
-        </div>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="fg"><label>Data de expiração</label><input type="date" id="bonDate" style="width:160px"></div>
-    </div>
-    <div class="modal-btns">
-      <button class="btn-sm" onclick="closeModal('modalBonus')">Cancelar</button>
-      <button class="btn btn-green" onclick="saveBonus()">✓ Aplicar</button>
-    </div>
-  </div>
-</div>
+<div class="modal-bg" id="mReg"><div class="modal">
+  <h3>➕ Registrar Usuário Manualmente</h3><div id="msgReg" class="msg"></div>
+  <div class="row"><div class="fg"><label>Conta MT5 *</label><input type="number" id="rAcct" placeholder="Obrigatório" style="width:140px"></div>
+  <div class="fg" style="flex:1"><label>Nome completo</label><input id="rName" style="width:100%"></div></div>
+  <div class="row"><div class="fg" style="flex:1"><label>E-mail</label><input id="rEmail" type="email" style="width:100%"></div>
+  <div class="fg" style="flex:1"><label>Telefone</label><input id="rPhone" style="width:100%"></div></div>
+  <div class="mbtn"><button class="btn-sm" onclick="cm('mReg')">Cancelar</button>
+  <button class="btn btn-g" onclick="saveReg()">✓ Registrar</button></div>
+</div></div>
 
-<div class="modal-bg" id="modalEdit">
-  <div class="modal">
-    <h3>✏️ Editar Usuário</h3>
-    <div id="msgEdit" class="msg"></div>
-    <div class="form-row"><div class="fg"><label>Conta MT5</label><input id="editAcct" readonly style="opacity:.7;width:120px"></div></div>
-    <div class="form-row"><div class="fg"><label>Nome completo</label><input id="editName" style="width:100%"></div></div>
-    <div class="form-row"><div class="fg"><label>E-mail</label><input id="editEmail" type="email" style="width:100%"></div></div>
-    <div class="form-row"><div class="fg"><label>Telefone</label><input id="editPhone" style="width:100%"></div></div>
-    <div class="modal-btns">
-      <button class="btn-sm" onclick="closeModal('modalEdit')">Cancelar</button>
-      <button class="btn btn-green" onclick="saveEdit()">✓ Salvar</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-bg" id="modalUserProd">
-  <div class="modal">
-    <h3>📦 Adicionar Produto ao Usuário</h3>
-    <div id="msgUserProd" class="msg"></div>
-    <div class="form-row"><div class="fg"><label>Conta MT5</label><input id="upAcct" readonly style="opacity:.7;width:120px"></div></div>
-    <div class="form-row"><div class="fg" style="width:100%"><label>Produto</label>
-      <select id="upProd" style="width:100%"><option value="">Selecione...</option></select>
-    </div></div>
-    <div class="modal-btns">
-      <button class="btn-sm" onclick="closeModal('modalUserProd')">Cancelar</button>
-      <button class="btn btn-green" onclick="saveUserProd()">✓ Atribuir</button>
-    </div>
-  </div>
-</div>
-
-<!-- Cards de ação rápida -->
+<!-- AÇÕES RÁPIDAS -->
 <div class="card">
-  <div class="card-title">➕ Ativar Premium</div>
+  <div class="card-title">⚡ Ações Rápidas</div>
   <div id="msg" class="msg"></div>
-  <div class="form-row">
+  <div class="row">
     <div class="fg"><label>Conta MT5 *</label><input type="number" id="iAcc" placeholder="Obrigatório" style="width:130px"></div>
     <div class="fg"><label>Nome</label><input type="text" id="iName" placeholder="Nome do cliente" style="width:150px"></div>
     <div class="fg"><label>Atalho</label><select id="iMon" style="width:100px"><option value="1">+1 mês</option><option value="3">+3 meses</option><option value="6">+6 meses</option><option value="12">+1 ano</option></select></div>
     <div class="fg"><label>ou data exata</label><input type="date" id="iDate" style="width:140px"></div>
-    <button class="btn" onclick="ativar()">✓ Ativar</button>
+    <button class="btn" onclick="ativar()">✓ Ativar Premium</button>
+    <button class="btn" style="background:#7c3aed" onclick="om('mReg')">+ Registrar Usuário</button>
   </div>
 </div>
 
+<!-- PRODUTOS -->
 <div class="card">
-  <div class="card-title">📦 Produtos</div>
+  <div class="card-title">📦 Catálogo de Produtos</div>
   <div id="msg3" class="msg"></div>
-  <div class="form-row" style="margin-bottom:12px;flex-wrap:wrap">
-    <div class="fg"><label>Nome *</label><input type="text" id="pName" placeholder="Ex: Hulk EA v2" style="width:130px"></div>
-    <div class="fg"><label>Tipo</label><select id="pType" style="width:120px"><option value="ea">Expert Advisor</option><option value="indicator">Indicador</option><option value="dashboard">Dashboard</option><option value="other">Outro</option></select></div>
-    <div class="fg"><label>Preço R$</label><input type="number" id="pPrice" placeholder="99.90" style="width:80px"></div>
-    <div class="fg"><label>Trial (dias)</label><input type="number" id="pTrial" value="0" style="width:60px"></div>
-    <div class="fg"><label>Lote mín</label><input type="number" id="pMinLots" value="0" step="0.01" style="width:65px"></div>
-    <div class="fg"><label>Lote máx</label><input type="number" id="pMaxLots" value="0" step="0.01" style="width:65px"></div>
-    <div class="fg"><label>Instâncias</label><input type="number" id="pInst" value="1" min="1" style="width:60px"></div>
-    <div class="fg"><label>Descrição</label><input type="text" id="pDesc" style="width:150px"></div>
+  <div class="row" style="margin-bottom:10px">
+    <div class="fg"><label>Nome *</label><input type="text" id="pName" placeholder="Ex: Hulk EA v2" style="width:140px"></div>
+    <div class="fg"><label>Tipo</label><select id="pType" style="width:130px"><option value="ea">Expert Advisor</option><option value="indicator">Indicador</option><option value="dashboard">Dashboard</option><option value="other">Outro</option></select></div>
+    <div class="fg" style="flex:1"><label>Descrição</label><input type="text" id="pDesc" style="width:100%"></div>
     <button class="btn" onclick="addProd()">+ Produto</button>
   </div>
-  <table><thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th>Preço</th><th>Trial</th><th>Lotes</th><th>Instâncias</th><th>Ativo</th><th></th></tr></thead>
+  <table><thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th>Descrição</th><th></th></tr></thead>
   <tbody>${prodRows}</tbody></table>
 </div>
 
+<!-- USUÁRIOS -->
 <div class="card">
   <div class="card-title">👥 Usuários Registrados (${stats.total})</div>
   <div style="overflow-x:auto">
-  <table><thead><tr><th>Conta</th><th>Nome / Contato</th><th>Plano</th><th>Expira</th><th>Último acesso</th><th>Senha</th><th>Produtos</th><th>Ações</th></tr></thead>
-  <tbody>${rows}</tbody></table>
-  </div>
+  <table><thead><tr><th>Conta</th><th>Nome / Contato</th><th>Plano</th><th>Expira</th><th>Último acesso</th><th>Senha</th><th>Produtos atribuídos</th><th>Ações</th></tr></thead>
+  <tbody>${rows}</tbody></table></div>
 </div>
 
 <script>
 const AUTH='Basic '+btoa('${ADMIN_USER}:${ADMIN_PASS}');
 const PRODUCTS=${prodsJs};
-let _licAcct='',_bonAcct='',_editAcct='',_upAcct='';
+let _la='',_ba='',_ea='',_pa='';
 
-function showMsg(id,msg,ok){
-  const el=document.getElementById(id);
-  if(!el)return;
-  el.textContent=msg; el.className='msg '+(ok?'ok':'err'); el.style.display='block';
-  setTimeout(()=>el.style.display='none',4000);
-}
-async function api(method,path,body){
-  const r=await fetch(path,{method,headers:{'Content-Type':'application/json','Authorization':AUTH},body:body?JSON.stringify(body):undefined});
-  return r.json();
-}
-function closeModal(id){document.getElementById(id).classList.remove('open');}
-function openModal(id){document.getElementById(id).classList.add('open');}
+function sm(id,msg,ok){const el=document.getElementById(id);if(!el)return;el.textContent=msg;el.className='msg '+(ok?'ok':'err');el.style.display='block';setTimeout(()=>el.style.display='none',4000);}
+async function api(method,path,body){const r=await fetch(path,{method,headers:{'Content-Type':'application/json','Authorization':AUTH},body:body?JSON.stringify(body):undefined});return r.json();}
+function cm(id){document.getElementById(id).classList.remove('open');}
+function om(id){document.getElementById(id).classList.add('open');}
+
+// Fechar modal clicando fora
+document.addEventListener('click',function(e){if(e.target.classList.contains('modal-bg'))e.target.classList.remove('open');});
 
 // Licença
-function renovarModal(acct,name){
-  _licAcct=acct;
-  document.getElementById('licAcct').value=acct;
-  document.getElementById('licName').value=name||'';
-  // Seta data padrão para hoje + 1 mês
-  const d=new Date(); d.setMonth(d.getMonth()+1);
-  document.getElementById('licDate').value=d.toISOString().split('T')[0];
-  openModal('modalLic');
-}
-function licAddMonths(m){
-  const cur=document.getElementById('licDate').value;
-  const d=cur?new Date(cur):new Date();
-  d.setMonth(d.getMonth()+m);
-  document.getElementById('licDate').value=d.toISOString().split('T')[0];
-}
-async function saveLic(){
-  const endDate=document.getElementById('licDate').value;
-  const name=document.getElementById('licName').value;
-  if(!endDate){showMsg('msgLic','Selecione uma data',false);return;}
-  const r=await api('POST','/admin/license',{account:_licAcct,name,endDate});
-  if(r.ok){showMsg('msgLic','✅ Licença até '+r.expiresStr,true);setTimeout(()=>location.reload(),1200);}
-  else showMsg('msgLic','❌ '+(r.error||'Erro'),false);
-}
+function renovarModal(a,n){_la=a;document.getElementById('lAcct').value=a;document.getElementById('lName').value=n||'';const d=new Date();d.setMonth(d.getMonth()+1);document.getElementById('lDate').value=d.toISOString().split('T')[0];om('mLic');}
+function lAdd(n,u){const cur=document.getElementById('lDate').value;const d=cur?new Date(cur):new Date();if(u==='m')d.setMonth(d.getMonth()+n);else d.setDate(d.getDate()+n);document.getElementById('lDate').value=d.toISOString().split('T')[0];}
+async function saveLic(){const endDate=document.getElementById('lDate').value;const name=document.getElementById('lName').value;if(!endDate){sm('msgLic','Selecione uma data',false);return;}const r=await api('POST','/admin/license',{account:_la,name,endDate});if(r.ok){sm('msgLic','✅ Até '+r.expiresStr,true);setTimeout(()=>location.reload(),1200);}else sm('msgLic','❌ '+(r.error||'Erro'),false);}
 
 // Ativar premium rápido
-async function ativar(){
-  const acct=document.getElementById('iAcc').value;
-  const name=document.getElementById('iName').value;
-  const months=document.getElementById('iMon').value;
-  const endDate=document.getElementById('iDate').value;
-  if(!acct){showMsg('msg','⚠️ Conta MT5 obrigatória',false);return;}
-  const r=await api('POST','/admin/license',{account:acct,name,months:parseInt(months),endDate:endDate||undefined});
-  if(r.ok){showMsg('msg','✅ Premium até '+r.expiresStr,true);setTimeout(()=>location.reload(),1200);}
-  else showMsg('msg','❌ '+(r.error||'Erro'),false);
-}
+async function ativar(){const a=document.getElementById('iAcc').value;const n=document.getElementById('iName').value;const m=document.getElementById('iMon').value;const d=document.getElementById('iDate').value;if(!a){sm('msg','⚠️ Conta MT5 obrigatória',false);return;}const r=await api('POST','/admin/license',{account:a,name:n,months:parseInt(m),endDate:d||undefined});if(r.ok){sm('msg','✅ Premium até '+r.expiresStr,true);setTimeout(()=>location.reload(),1200);}else sm('msg','❌ '+(r.error||'Erro'),false);}
 
 // Bônus
-function bonusModal(acct,name){
-  _bonAcct=acct;
-  document.getElementById('bonAcct').value=acct;
-  const d=new Date(); d.setDate(d.getDate()+30);
-  document.getElementById('bonDate').value=d.toISOString().split('T')[0];
-  openModal('modalBonus');
-}
-function bonAddDays(days){
-  const cur=document.getElementById('bonDate').value;
-  const d=cur?new Date(cur):new Date();
-  d.setDate(d.getDate()+days);
-  document.getElementById('bonDate').value=d.toISOString().split('T')[0];
-}
-async function saveBonus(){
-  const endDate=document.getElementById('bonDate').value;
-  const type=document.getElementById('bonType').value;
-  if(!endDate){showMsg('msgBonus','Selecione uma data',false);return;}
-  const r=await api('POST','/admin/manual',{account:_bonAcct,type,endDate});
-  if(r.ok){showMsg('msgBonus','✅ Aplicado até '+r.expiresStr,true);setTimeout(()=>location.reload(),1200);}
-  else showMsg('msgBonus','❌ '+(r.error||'Erro'),false);
-}
+function bonusModal(a){_ba=a;document.getElementById('bAcct').value=a;const d=new Date();d.setDate(d.getDate()+30);document.getElementById('bDate').value=d.toISOString().split('T')[0];om('mBonus');}
+function bAdd(n){const cur=document.getElementById('bDate').value;const d=cur?new Date(cur):new Date();d.setDate(d.getDate()+n);document.getElementById('bDate').value=d.toISOString().split('T')[0];}
+async function saveBonus(){const endDate=document.getElementById('bDate').value;const type=document.getElementById('bType').value;if(!endDate){sm('msgBonus','Selecione uma data',false);return;}const r=await api('POST','/admin/manual',{account:_ba,type,endDate});if(r.ok){sm('msgBonus','✅ Até '+r.expiresStr,true);setTimeout(()=>location.reload(),1200);}else sm('msgBonus','❌ '+(r.error||'Erro'),false);}
 
-// Editar usuário
-function editUser(acct,name,email,phone){
-  _editAcct=acct;
-  document.getElementById('editAcct').value=acct;
-  document.getElementById('editName').value=name||'';
-  document.getElementById('editEmail').value=email||'';
-  document.getElementById('editPhone').value=phone||'';
-  openModal('modalEdit');
-}
-async function saveEdit(){
-  const name=document.getElementById('editName').value;
-  const email=document.getElementById('editEmail').value;
-  const phone=document.getElementById('editPhone').value;
-  const r=await api('PUT','/admin/user',{account:_editAcct,name,email,phone});
-  if(r.ok){showMsg('msgEdit','✅ Salvo!',true);setTimeout(()=>location.reload(),1000);}
-  else showMsg('msgEdit','❌ Erro',false);
-}
+// Editar
+function editUser(a,n,e,p){_ea=a;document.getElementById('eAcct').value=a;document.getElementById('eName').value=n||'';document.getElementById('eEmail').value=e||'';document.getElementById('ePhone').value=p||'';om('mEdit');}
+async function saveEdit(){const r=await api('PUT','/admin/user',{account:_ea,name:document.getElementById('eName').value,email:document.getElementById('eEmail').value,phone:document.getElementById('ePhone').value});if(r.ok){sm('msgEdit','✅ Salvo!',true);setTimeout(()=>location.reload(),1000);}else sm('msgEdit','❌ Erro',false);}
 
-// Adicionar produto ao usuário
-function addUserProd(acct){
-  _upAcct=acct;
-  document.getElementById('upAcct').value=acct;
-  const sel=document.getElementById('upProd');
-  sel.innerHTML='<option value="">Selecione...</option>';
-  PRODUCTS.forEach(p=>{sel.innerHTML+='<option value="'+p.id+'">'+p.name+'</option>';});
-  openModal('modalUserProd');
-}
-async function saveUserProd(){
-  const productId=document.getElementById('upProd').value;
-  if(!productId){showMsg('msgUserProd','Selecione um produto',false);return;}
-  const r=await api('POST','/admin/user-product',{account:_upAcct,productId});
-  if(r.ok){showMsg('msgUserProd','✅ Produto atribuído!',true);setTimeout(()=>location.reload(),1000);}
-  else showMsg('msgUserProd','❌ '+(r.error||'Erro'),false);
-}
+// Atribuir produto
+function addUserProd(a){_pa=a;document.getElementById('pAcct').value=a;const sel=document.getElementById('pProdSel');sel.innerHTML='<option value="">Selecione...</option>';PRODUCTS.forEach(p=>{sel.innerHTML+='<option value="'+p.id+'">'+p.name+'</option>';});document.getElementById('pMinL').value='0';document.getElementById('pMaxL').value='0';document.getElementById('pInst').value='1';document.getElementById('pReal').value='';document.getElementById('pDemo').value='';om('mProd');}
+async function saveProd(){const pid=document.getElementById('pProdSel').value;if(!pid){sm('msgProd','Selecione um produto',false);return;}const prod=PRODUCTS.find(p=>p.id===pid);const r=await api('POST','/admin/user-product',{account:_pa,productId:pid,name:prod?prod.name:pid,minLots:document.getElementById('pMinL').value,maxLots:document.getElementById('pMaxL').value,instances:document.getElementById('pInst').value,accountReal:document.getElementById('pReal').value,accountDemo:document.getElementById('pDemo').value});if(r.ok){sm('msgProd','✅ Atribuído!',true);setTimeout(()=>location.reload(),1000);}else sm('msgProd','❌ '+(r.error||'Erro'),false);}
+
+// Registro manual
+async function saveReg(){const a=document.getElementById('rAcct').value;if(!a){sm('msgReg','⚠️ Conta MT5 obrigatória',false);return;}const r=await api('POST','/admin/register',{account:a,name:document.getElementById('rName').value,email:document.getElementById('rEmail').value,phone:document.getElementById('rPhone').value});if(r.ok){sm('msgReg','✅ Usuário registrado!',true);setTimeout(()=>location.reload(),1200);}else sm('msgReg','❌ '+(r.error||'Erro de duplicata'),false);}
+
+// Remover produto do usuário
+async function rmUserProd(a,pid){if(!confirm('Remover produto?'))return;const r=await api('DELETE','/admin/user-product',{account:a,productId:pid});if(r.ok)location.reload();}
 
 // Revogar
-async function revogar(acct){
-  if(!confirm('Revogar licença de '+acct+'?'))return;
-  const r=await api('DELETE','/admin/license',{account:acct});
-  if(r.ok)location.reload();
-  else showMsg('msg','❌ Erro',false);
-}
+async function revogar(a){if(!confirm('Revogar licença de '+a+'?'))return;const r=await api('DELETE','/admin/license',{account:a});if(r.ok)location.reload();}
 
 // Reset senha
-async function resetPw(acct){
-  if(!confirm('Resetar senha de '+acct+'? O usuário precisará cadastrar nova senha via MT5.'))return;
-  const r=await api('POST','/admin/reset-password',{account:acct});
-  if(r.ok)alert('✅ Senha resetada! Usuário deve usar botão [Acessar Dashbot Web] no MT5.');
-}
+async function resetPw(a){if(!confirm('Resetar senha de '+a+'?\\nO usuário precisará acessar via botão [Acessar Dashbot Web] no MT5.'))return;const r=await api('POST','/admin/reset-password',{account:a});if(r.ok)alert('✅ Senha resetada!');}
 
-// Remover usuário completamente
-async function delUser(acct){
-  if(!confirm('⚠️ Remover COMPLETAMENTE o usuário '+acct+'?\nIsso apaga a licença, senha e todos os dados.'))return;
-  const r=await api('DELETE','/admin/user',{account:acct});
-  if(r.ok)location.reload();
-  else alert('❌ Erro ao remover');
-}
+// Remover usuário
+async function delUser(a){if(!confirm('⚠️ Remover COMPLETAMENTE o usuário '+a+'?\\nIsso apaga licença, senha e todos os dados.'))return;const r=await api('DELETE','/admin/user',{account:a});if(r.ok)location.reload();else alert('❌ Erro ao remover');}
 
-// Produtos
-async function addProd(){
-  const name=document.getElementById('pName').value;
-  const type=document.getElementById('pType').value;
-  if(!name){showMsg('msg3','⚠️ Nome obrigatório',false);return;}
-  const r=await api('POST','/admin/products',{
-    name,type,
-    price:parseFloat(document.getElementById('pPrice').value)||null,
-    trialDays:parseInt(document.getElementById('pTrial').value)||0,
-    minLots:parseFloat(document.getElementById('pMinLots').value)||0,
-    maxLots:parseFloat(document.getElementById('pMaxLots').value)||0,
-    instances:parseInt(document.getElementById('pInst').value)||1,
-    description:document.getElementById('pDesc').value
-  });
-  if(r.ok){showMsg('msg3','✅ Produto adicionado!',true);setTimeout(()=>location.reload(),1000);}
-  else showMsg('msg3','❌ '+(r.error||'Erro'),false);
-}
-async function delProd(id){
-  if(!confirm('Remover produto?'))return;
-  const r=await api('DELETE','/admin/products',{id});
-  if(r.ok)location.reload();
-}
-
-// Fecha modais clicando fora
-document.querySelectorAll('.modal-bg').forEach(bg=>{
-  bg.addEventListener('click',function(e){if(e.target===bg)bg.classList.remove('open');});
-});
+// Produto catálogo
+async function addProd(){const n=document.getElementById('pName').value;if(!n){sm('msg3','⚠️ Nome obrigatório',false);return;}const r=await api('POST','/admin/products',{name:n,type:document.getElementById('pType').value,description:document.getElementById('pDesc').value});if(r.ok){sm('msg3','✅ Produto adicionado!',true);setTimeout(()=>location.reload(),1000);}else sm('msg3','❌ '+(r.error||'Erro'),false);}
+async function delProd(id){if(!confirm('Remover produto?'))return;const r=await api('DELETE','/admin/products',{id});if(r.ok)location.reload();}
 </script></body></html>`;
 }
