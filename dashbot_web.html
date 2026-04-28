@@ -511,7 +511,6 @@ const EA_COLORS = [
 function fetchData() {
   var tok = authState.sessionToken || CONFIG.authToken;
   var url = CONFIG.proxyUrl + '/data?token=' + tok;
-  // Usa XMLHttpRequest para máxima compatibilidade iOS
   var xhr = new XMLHttpRequest();
   xhr.open('GET', url, true);
   xhr.timeout = 10000;
@@ -521,11 +520,17 @@ function fetchData() {
         var d = JSON.parse(xhr.responseText);
         state.data = d;
         state.isPremium = d.premium === true;
-        updateStatus(true, d.ts);
-        render();
-      } catch(e) {
-        updateStatus(false, null);
-      }
+        updateStatus(!d.offline, d.ts);
+        if(d.offline) {
+          showOfflineMessage(d.msg||'MT5 desconectado. Abra o Dashbot no MetaTrader 5.');
+        } else {
+          hideOfflineMessage();
+          render();
+        }
+      } catch(e) { updateStatus(false, null); }
+    } else if(xhr.status === 401) {
+      // Sessão expirada — volta para login
+      logout();
     } else {
       updateStatus(false, null);
     }
@@ -533,6 +538,32 @@ function fetchData() {
   xhr.onerror = function() { updateStatus(false, null); };
   xhr.ontimeout = function() { updateStatus(false, null); };
   xhr.send();
+}
+
+function showOfflineMessage(msg) {
+  var el = document.getElementById('offlineMsg');
+  if(!el) {
+    el = document.createElement('div');
+    el.id = 'offlineMsg';
+    el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);'+
+      'background:#0f1120;border:1px solid #1e2438;border-radius:16px;padding:40px;'+
+      'text-align:center;color:#e8ecf4;z-index:999;max-width:380px;width:90%';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = '<div style="font-size:40px;margin-bottom:16px">📡</div>'+
+    '<h3 style="color:#e8ecf4;margin-bottom:8px">MT5 Desconectado</h3>'+
+    '<p style="color:#64748b;font-size:13px;margin-bottom:20px">'+msg+'</p>'+
+    '<p style="color:#3b82f6;font-size:12px">Tentando reconectar...</p>';
+  el.style.display = 'block';
+  var appEl = document.getElementById('app');
+  if(appEl) appEl.style.filter = 'blur(4px)';
+}
+
+function hideOfflineMessage() {
+  var el = document.getElementById('offlineMsg');
+  if(el) el.style.display = 'none';
+  var appEl = document.getElementById('app');
+  if(appEl) appEl.style.filter = '';
 }
 
 function sendCommand(cmd, magic) {
