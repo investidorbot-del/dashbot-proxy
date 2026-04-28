@@ -5,6 +5,8 @@
 const https  = require('https');
 const http   = require('http');
 const crypto = require('crypto');
+const fs     = require('fs');
+const path   = require('path');
 
 const PORT        = process.env.PORT               || 3000;
 const MASTER_KEY  = process.env.JSONBIN_MASTER_KEY || '';
@@ -154,8 +156,6 @@ function adminAuth(req){
 
 // ── Server ────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────
-const fs   = require('fs');
-const path_mod = require('path');
 
 http.createServer(async (req, res) => {
   const parsed = new URL(req.url,'http://localhost');
@@ -165,16 +165,20 @@ http.createServer(async (req, res) => {
 
   if(method==='OPTIONS'){ res.writeHead(204,CORS); res.end(); return; }
 
+  // Health check para o Render
+  if(path==='/health'||path==='/ping'){
+    sendJSON(res,200,{status:'ok','service':'Dashbot Server v3',ts:Date.now()});
+    return;
+  }
+
   // Serve o dashboard web
   if(path==='/'||path==='/dashbot'||path==='/dashbot/'){
     const htmlPath = path_mod.join(__dirname,'dashbot_web.html');
     if(fs.existsSync(htmlPath)){
-      res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'});
+      res.writeHead(200,{...CORS,'Content-Type':'text/html;charset=utf-8'});
       res.end(fs.readFileSync(htmlPath));
     } else {
-      // Fallback se não há o arquivo — redireciona para admin
-      res.writeHead(302,{'Location':'/admin'});
-      res.end();
+      sendJSON(res,404,{error:'dashbot_web.html not found on server'});
     }
     return;
   }
