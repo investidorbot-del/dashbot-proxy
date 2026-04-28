@@ -222,6 +222,36 @@ http.createServer(async (req, res) => {
     return;
   }
 
+  // /auth/check — verifica se conta tem senha e retorna setupToken se não tiver
+  if(reqPath==='/auth/check'){
+    const account=qs.get('account')||'';
+    if(!account){sendJSON(res,400,{error:'account obrigatório'});return;}
+    const lics=await getLics();
+    const now=Date.now();
+    // Cria trial se não existe
+    if(!lics[account]){
+      lics[account]={account,type:'trial',trialStart:now,
+        trialEnd:now+TRIAL_DAYS*DAY_MS,firstSeen:now,lastSeen:now};
+      await saveLics(lics);
+    }
+    const s=checkLic(lics[account]);
+    if(!s.valid){sendJSON(res,403,{error:'Licença expirada'});return;}
+    const db=await getAuth();
+    const hasPassword=!!db.users?.[String(account)];
+    if(hasPassword){
+      sendJSON(res,200,{hasPassword:true,plan:s.plan});
+    } else {
+      // Gera setupToken para cadastro de senha
+      const setupToken=genToken(account);
+      if(!db.tokens) db.tokens={};
+      db.tokens['setup_'+account]={token:setupToken,account,
+        expires:Date.now()+600000,type:'setup'};
+      await saveAuth(db);
+      sendJSON(res,200,{hasPassword:false,setupToken,account,plan:s.plan});
+    }
+    return;
+  }
+
   // /auth/mt5-link — EA abre link de primeiro acesso
   if(reqPath==='/auth/mt5-link' && method==='POST'){
     const token=qs.get('token')||'';
