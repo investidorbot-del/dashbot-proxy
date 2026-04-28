@@ -83,13 +83,19 @@ async function saveLics(lics) {
   });
 }
 async function getAuth() {
+  // Se AUTH_BIN não configurado, usa LICENSE_BIN como fallback
+  const binId = AUTH_BIN || LICENSE_BIN;
   return new Promise(resolve => {
-    if(!AUTH_BIN){ resolve({users:{},tokens:{}}); return; }
+    if(!binId){ resolve({users:{},tokens:{}}); return; }
     const now = Date.now();
-    if(now-lastAuthLoad < CACHE_TTL){ resolve(authCache); return; }
-    jbReq('GET', AUTH_BIN, null, (err,code,data) => {
+    if(AUTH_BIN && now-lastAuthLoad < CACHE_TTL){ resolve(authCache); return; }
+    jbReq('GET', binId, null, (err,code,data) => {
       if(!err && code===200) try {
-        const p = JSON.parse(data); authCache = p.auth||{}; lastAuthLoad = now;
+        const p = JSON.parse(data);
+        // Se usando LICENSE_BIN, auth fica em p.auth; senão p.auth
+        const src = AUTH_BIN ? p.auth : (p.auth||{});
+        authCache = src||{};
+        lastAuthLoad = now;
       } catch(e){}
       if(!authCache.users)  authCache.users  = {};
       if(!authCache.tokens) authCache.tokens = {};
@@ -98,11 +104,27 @@ async function getAuth() {
   });
 }
 async function saveAuth(db) {
+  const binId = AUTH_BIN || LICENSE_BIN;
   return new Promise(resolve => {
-    jbReq('PUT', AUTH_BIN, {auth:db}, (err,code) => {
-      if(!err && code===200){ authCache=db; lastAuthLoad=Date.now(); }
-      resolve(!err && code===200);
-    });
+    if(!binId){ resolve(false); return; }
+    if(AUTH_BIN) {
+      // Salva diretamente no AUTH_BIN
+      jbReq('PUT', binId, {auth:db}, (err,code) => {
+        if(!err && code===200){ authCache=db; lastAuthLoad=Date.now(); }
+        resolve(!err && code===200);
+      });
+    } else {
+      // Salva dentro do LICENSE_BIN junto com as licenças
+      jbReq('GET', binId, null, (err,code,data) => {
+        let existing = {};
+        if(!err && code===200) try{ existing=JSON.parse(data); }catch(e){}
+        existing.auth = db;
+        jbReq('PUT', binId, existing, (err2,code2) => {
+          if(!err2 && code2===200){ authCache=db; lastAuthLoad=Date.now(); }
+          resolve(!err2 && code2===200);
+        });
+      });
+    }
   });
 }
 
