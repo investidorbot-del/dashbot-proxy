@@ -317,7 +317,7 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // /data — dados do dashboard (estritamente filtrado por conta)
+  // /data — dados do dashboard (usa cache em memória primeiro)
   if(reqPath==='/data'){
     const tok=qs.get('token')||req.headers['x-auth-token']||'';
     let sessionAccount=null;
@@ -328,44 +328,44 @@ http.createServer(async (req, res) => {
     } else {
       sessionAccount=qs.get('account')||null;
     }
+
+    const serveData=(all)=>{
+      if(!sessionAccount){sendJSON(res,200,all);return;}
+      let acctData=null;
+      if(all&&all[sessionAccount]) acctData=all[sessionAccount];
+      else if(all&&all.account===sessionAccount) acctData=all;
+      if(acctData&&acctData.eas){
+        sendJSON(res,200,acctData);
+      } else {
+        sendJSON(res,200,{eas:[],ts:Date.now(),offline:true,
+          msg:'MT5 desconectado. Abra o Dashbot no MetaTrader 5.'});
+      }
+    };
+
+    // Usa cache em memória se disponível (atualizado pelo /update)
+    if(global.dataCache&&Object.keys(global.dataCache).length>0){
+      serveData(global.dataCache);
+      return;
+    }
+    // Fallback: lê do JSONBin
     return new Promise(resolve=>{
       jbReq('GET',DATA_BIN,null,(err,code,rawData)=>{
         if(err||code!==200){
-          // Sem dados no servidor — retorna vazio com mensagem
           sendJSON(res,200,{eas:[],ts:Date.now(),offline:true,
             msg:'MT5 desconectado. Abra o Dashbot no MetaTrader 5.'});
           resolve(); return;
         }
         try{
           const all=JSON.parse(rawData);
-          if(!sessionAccount){sendJSON(res,200,all);resolve();return;}
-          // Busca dados da conta específica
-          let acctData=null;
-          if(all[sessionAccount]) {
-            // Formato novo — indexado por conta
-            acctData=all[sessionAccount];
-          } else if(all.account===sessionAccount) {
-            // Formato antigo mas com account correto
-            acctData=all;
-          } else if(all.eas && !all.account) {
-            // Formato antigo sem account — verifica se os EAs são desta conta
-            // Não podemos confirmar — retorna offline
-            acctData=null;
-          }
-          if(acctData && acctData.eas){
-            sendJSON(res,200,acctData);
-          } else {
-            // Conta não tem dados — MT5 não está enviando
-            sendJSON(res,200,{eas:[],ts:Date.now(),offline:true,
-              msg:'MT5 desconectado. Abra o Dashbot no MetaTrader 5.'});
-          }
+          if(typeof all==='object'&&!all.eas) global.dataCache=all; // popula cache
+          serveData(all);
         }catch(e){sendJSON(res,500,{error:'Parse error'});}
         resolve();
       });
     });
   }
 
-  // /update — EA envia dados (indexado por account)
+  // /update — EA envia dados (indexado por account, com cache em memória)
   if(reqPath==='/update' && method==='POST'){
     const tok=qs.get('token')||'';
     if(tok!==PROXY_TOKEN){sendJSON(res,401,{error:'Não autorizado'});return;}
@@ -373,30 +373,21 @@ http.createServer(async (req, res) => {
     let payload;
     try{payload=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
     const account=String(payload.account||qs.get('account')||'');
-    return new Promise(resolve=>{
-      if(account){
-        // Lê dados atuais, mescla e salva
-        jbReq('GET',DATA_BIN,null,(err,code,rawData)=>{
-          let all={};
-          if(!err&&code===200){
-            try{all=JSON.parse(rawData);}catch(e){all={};}
-          }
-          // Garante que all é objeto e não tem formato antigo misturado
-          if(typeof all!=='object'||Array.isArray(all)||all.eas){all={};}
-          all[account]=payload;
-          jbReq('PUT',DATA_BIN,all,(err2,code2)=>{
-            sendJSON(res,!err2&&code2===200?200:500,{ok:!err2&&code2===200});
-            resolve();
-          });
-        });
-      } else {
-        // Sem account — salva direto (compatibilidade)
-        jbReq('PUT',DATA_BIN,payload,(err,code)=>{
-          sendJSON(res,err||code!==200?500:200,{ok:!err&&code===200});
-          resolve();
-        });
-      }
+    // Usa cache em memória para evitar double-request ao JSONBin
+    if(!global.dataCache||typeof global.dataCache!=='object') global.dataCache={};
+    if(account){
+      global.dataCache[account]=payload;
+    } else {
+      // Formato antigo sem account — armazena direto
+      global.dataCache=payload;
+    }
+    // Persiste no JSONBin de forma assíncrona (não bloqueia resposta ao EA)
+    sendJSON(res,200,{ok:true});
+    // Salva no JSONBin em background
+    jbReq('PUT',DATA_BIN,global.dataCache,(err,code)=>{
+      if(err||code!==200) console.error('JSONBin save error:',err||code);
     });
+    return;
   }
 
   // /command — comandos EA/Web
