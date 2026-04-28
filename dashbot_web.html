@@ -288,7 +288,8 @@ function showLoginScreen(opts) {
   }
   var isSetup = !!opts.setupToken;
   var preAccount = opts.account || accountURL || '';
-    document.querySelector('img[alt="iBot"]').src : '';
+  var logoEl = document.querySelector('img[alt="iBot"]');
+  var logoB64 = logoEl ? logoEl.src : '';
   screen.innerHTML = '<div style="background:#0f1120;border:1px solid #1e2438;border-radius:16px;padding:32px;max-width:380px;width:100%;text-align:center">' +
     '<div style="width:64px;height:64px;margin:0 auto 16px;background:#0d1f3c;border-radius:12px;display:flex;align-items:center;justify-content:center">' +
     (logoB64?'<img src="'+logoB64+'" style="width:48px;height:48px;object-fit:contain;filter:brightness(0) invert(1)">':'<span style="font-size:32px">🤖</span>')+'</div>'+
