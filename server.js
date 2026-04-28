@@ -228,13 +228,14 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // /auth/check — verifica se conta tem senha e retorna setupToken se não tiver
+  // /auth/check — verifica se conta tem senha (sem cache)
   if(reqPath==='/auth/check'){
     const account=qs.get('account')||'';
     if(!account){sendJSON(res,400,{error:'account obrigatório'});return;}
+    // Força leitura fresca do banco (sem cache)
+    lastAuthLoad=0;
     const lics=await getLics();
     const now=Date.now();
-    // Cria trial se não existe
     if(!lics[account]){
       lics[account]={account,type:'trial',trialStart:now,
         trialEnd:now+TRIAL_DAYS*DAY_MS,firstSeen:now,lastSeen:now};
@@ -242,12 +243,12 @@ http.createServer(async (req, res) => {
     }
     const s=checkLic(lics[account]);
     if(!s.valid){sendJSON(res,403,{error:'Licença expirada'});return;}
+    // Leitura fresca do auth DB
     const db=await getAuth();
-    const hasPassword=!!db.users?.[String(account)];
+    const hasPassword=!!(db.users&&db.users[String(account)]&&db.users[String(account)].passwordHash);
     if(hasPassword){
       sendJSON(res,200,{hasPassword:true,plan:s.plan});
     } else {
-      // Gera setupToken para cadastro de senha
       const setupToken=genToken(account);
       if(!db.tokens) db.tokens={};
       db.tokens['setup_'+account]={token:setupToken,account,
@@ -404,7 +405,7 @@ http.createServer(async (req, res) => {
       res.writeHead(401,{'WWW-Authenticate':'Basic realm="Dashbot Admin"',...CORS});
       res.end('Não autorizado'); return;
     }
-    if((path==='/admin'||reqPath==='/admin/')&&method==='GET'){
+    if((reqPath==='/admin'||reqPath==='/admin/')&&method==='GET'){
       const lics=await getLics(); const db=await getAuth();
       const now=Date.now();
       let rows=''; let stats={total:0,premium:0,trial:0,expired:0,active:0};
