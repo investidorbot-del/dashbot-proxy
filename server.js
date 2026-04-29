@@ -189,29 +189,69 @@ http.createServer(async (req, res) => {
     return;
   }
 
+  // /validate-product — EA/Indicador verifica se tem licença para produto específico
+  if(reqPath==='/validate-product'){
+    const account   = qs.get('account')  ||'';
+    const productId = qs.get('product')  ||'';
+    const token     = qs.get('token')    ||'';
+    if(token!==PROXY_TOKEN){sendJSON(res,401,{error:'Token inválido'});return;}
+    if(!account||!productId){sendJSON(res,400,{error:'account e product obrigatórios'});return;}
+    lastLicLoad=0;
+    const lics=await getLics();
+    const now=Date.now();
+    const lic=lics[account];
+    if(!lic){sendJSON(res,403,{valid:false,error:'Conta não encontrada. Adquira uma licença.'});return;}
+    const s=checkLic(lic);
+    if(!s.valid){sendJSON(res,403,{valid:false,error:'Licença expirada.',plan:s.plan});return;}
+    // Verifica se tem o produto atribuído
+    const userProds=lic.products||[];
+    const prod=userProds.find(p=>p.id===productId);
+    if(!prod){sendJSON(res,403,{valid:false,error:'Produto não licenciado para esta conta.'});return;}
+    // Retorna configurações do produto para este usuário
+    sendJSON(res,200,{
+      valid:true, plan:s.plan, daysLeft:s.daysLeft,
+      account, productId,
+      minLots:   prod.minLots   ||0,
+      maxLots:   prod.maxLots   ||0,
+      instances: prod.instances ||1,
+      accountReal: prod.accountReal||'',
+      accountDemo: prod.accountDemo||'',
+      trialEnd:  lic.trialEnd  ||null,
+      premiumEnd:lic.premiumEnd||null
+    });
+    return;
+  }
+
   // /validate — EA valida licença + auto-atribui produto Dashbot
   if(reqPath==='/validate'){
     const account = qs.get('account')||'';
+    if(!account){sendJSON(res,400,{error:'account obrigatório'});return;}
+    lastLicLoad=0; // força leitura fresca
     const lics = await getLics();
     const now  = Date.now();
+    let changed=false;
     // Garante produto Dashbot existe no catálogo
-    if(!lics._products) lics._products=[];
-    if(!lics._products.find(p=>p.id==='prod_dashbot'))
+    if(!lics._products) { lics._products=[]; changed=true; }
+    if(!lics._products.find(p=>p.id==='prod_dashbot')){
       lics._products.push({id:'prod_dashbot',name:'Dashbot',type:'dashboard',
-        description:'Painel de monitoramento',active:true,createdAt:now});
+        description:'Painel de monitoramento de robôs',active:true,createdAt:now});
+      changed=true;
+    }
     let lic = lics[account];
     if(!lic){
       lic={account,type:'trial',trialStart:now,trialEnd:now+TRIAL_DAYS*DAY_MS,
         firstSeen:now,lastSeen:now,products:[]};
-      lics[account]=lic;
+      lics[account]=lic; changed=true;
     } else {
-      lics[account].lastSeen=now;
+      if(lics[account].lastSeen!==now){ lics[account].lastSeen=now; changed=true; }
     }
     // Auto-atribui Dashbot ao usuário
-    if(!lics[account].products) lics[account].products=[];
-    if(!lics[account].products.find(p=>p.id==='prod_dashbot'))
+    if(!lics[account].products) { lics[account].products=[]; changed=true; }
+    if(!lics[account].products.find(p=>p.id==='prod_dashbot')){
       lics[account].products.push({id:'prod_dashbot',name:'Dashbot',assignedAt:now});
-    await saveLics(lics);
+      changed=true;
+    }
+    if(changed) await saveLics(lics);
     const s=checkLic(lics[account]);
     sendJSON(res,200,{...s,account,trialStart:lic.trialStart,
       trialEnd:lic.trialEnd||null,premiumEnd:lic.premiumEnd||null});
@@ -476,6 +516,22 @@ http.createServer(async (req, res) => {
         <td><button class="btn-sm btn-r" onclick="delProd('${p.id}')">✕ Remover</button></td>
       </tr>`).join(''):'<tr><td colspan="5" style="color:#8b949e;text-align:center;padding:16px">Nenhum produto</td></tr>';
       sendHTML(res,buildAdminHTML(rows,stats,prodRows,JSON.stringify(products)));
+      return;
+    }
+    // GET /admin/init — cria produto Dashbot se não existir
+    if(reqPath==='/admin/init'&&method==='GET'){
+      lastLicLoad=0;
+      const lics=await getLics(); const now=Date.now();
+      if(!lics._products) lics._products=[];
+      const exists=lics._products.find(p=>p.id==='prod_dashbot');
+      if(!exists){
+        lics._products.push({id:'prod_dashbot',name:'Dashbot',type:'dashboard',
+          description:'Painel de monitoramento de robôs',active:true,createdAt:now});
+        await saveLics(lics);
+        sendJSON(res,200,{ok:true,msg:'Produto Dashbot criado!'});
+      } else {
+        sendJSON(res,200,{ok:true,msg:'Produto Dashbot já existe.',product:exists});
+      }
       return;
     }
     // POST register new user manually
