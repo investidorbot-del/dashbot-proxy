@@ -155,6 +155,8 @@ function adminAuth(req){
 }
 
 // ── Server ────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+
 http.createServer(async (req, res) => {
   const parsed  = new URL(req.url,'http://localhost');
   const reqPath = parsed.pathname;
@@ -163,18 +165,23 @@ http.createServer(async (req, res) => {
 
   if(method==='OPTIONS'){ res.writeHead(204,CORS); res.end(); return; }
 
-  // ── Health check ──────────────────────────────────────────────
+  // Health check para o Render
   if(reqPath==='/health'||reqPath==='/ping'){
     sendJSON(res,200,{status:'ok','service':'Dashbot Server v3',ts:Date.now()});
     return;
   }
 
-  // ── Dashboard web ─────────────────────────────────────────────
+  // Serve o dashboard web — sem cache para garantir versão atualizada
   if(reqPath==='/'||reqPath==='/dashbot'||reqPath==='/dashbot/'){
     const htmlPath = path.join(__dirname,'dashbot_web.html');
     if(fs.existsSync(htmlPath)){
-      res.writeHead(200,{...CORS,'Content-Type':'text/html;charset=utf-8',
-        'Cache-Control':'no-store, no-cache, must-revalidate','Pragma':'no-cache','Expires':'0'});
+      res.writeHead(200,{
+        ...CORS,
+        'Content-Type':'text/html;charset=utf-8',
+        'Cache-Control':'no-store, no-cache, must-revalidate',
+        'Pragma':'no-cache',
+        'Expires':'0'
+      });
       res.end(fs.readFileSync(htmlPath));
     } else {
       sendJSON(res,404,{error:'dashbot_web.html not found on server'});
@@ -182,106 +189,48 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // ════════════════════════════════════════════════════════════════
-  //  /validate-product — Validação de licença por produto (EAs/Indicadores)
-  //
-  //  Parâmetros: account, product, token
-  //  Retorna:    valid, plan, daysLeft, minLots, maxLots, instances, error
-  //
-  //  Usado pelo protocolo DashBot em todos os EAs/Indicadores.
-  //  O EA chama este endpoint no OnInit() e a cada intervalo configurado.
-  // ════════════════════════════════════════════════════════════════
+  // /validate-product — EA/Indicador verifica se tem licença para produto específico
   if(reqPath==='/validate-product'){
     const account   = qs.get('account')  ||'';
     const productId = qs.get('product')  ||'';
     const token     = qs.get('token')    ||'';
-
-    // 1. Token
-    if(token!==PROXY_TOKEN){
-      sendJSON(res,401,{valid:false,error:'Token inválido'});
-      return;
-    }
-    // 2. Parâmetros obrigatórios
-    if(!account||!productId){
-      sendJSON(res,400,{valid:false,error:'account e product são obrigatórios'});
-      return;
-    }
-
-    // 3. Força leitura fresca do banco
-    lastLicLoad = 0;
-    const lics = await getLics();
-    const now  = Date.now();
-
-    // 4. Garante catálogo de produtos inicializado
-    if(!lics._products) lics._products = [];
-
-    // 5. Verifica se produto existe no catálogo
-    const catalogProd = lics._products.find(p => p.id === productId);
-    if(!catalogProd){
-      sendJSON(res,403,{valid:false,error:`Produto "${productId}" não encontrado no catálogo. Cadastre-o no Admin v3.`});
-      return;
-    }
-    if(catalogProd.active === false){
-      sendJSON(res,403,{valid:false,error:`Produto "${catalogProd.name}" está desativado.`});
-      return;
-    }
-
-    // 6. Verifica se conta existe
-    const lic = lics[account];
-    if(!lic){
-      sendJSON(res,403,{valid:false,error:'Conta MT5 '+account+' não encontrada. Adquira uma licença em dashbot.investidorbot.com'});
-      return;
-    }
-
-    // 7. Verifica status da licença geral
-    const s = checkLic(lic);
-    if(!s.valid){
-      sendJSON(res,403,{valid:false,error:'Licença expirada. Renove em dashbot.investidorbot.com',plan:s.plan});
-      return;
-    }
-
-    // 8. Verifica se produto está atribuído a esta conta
-    const userProds  = lic.products || [];
-    const userProd   = userProds.find(p => p.id === productId);
-    if(!userProd){
-      sendJSON(res,403,{valid:false,error:`Produto "${catalogProd.name}" não licenciado para esta conta. Contate o suporte.`});
-      return;
-    }
-
-    // 9. Atualiza lastSeen
-    lics[account].lastSeen = now;
-    // Salva em background sem bloquear resposta
-    saveLics(lics).catch(()=>{});
-
-    // 10. Retorna configurações personalizadas do produto para este usuário
+    if(token!==PROXY_TOKEN){sendJSON(res,401,{error:'Token inválido'});return;}
+    if(!account||!productId){sendJSON(res,400,{error:'account e product obrigatórios'});return;}
+    lastLicLoad=0;
+    const lics=await getLics();
+    const now=Date.now();
+    const lic=lics[account];
+    if(!lic){sendJSON(res,403,{valid:false,error:'Conta não encontrada. Adquira uma licença.'});return;}
+    const s=checkLic(lic);
+    if(!s.valid){sendJSON(res,403,{valid:false,error:'Licença expirada.',plan:s.plan});return;}
+    // Verifica se tem o produto atribuído
+    const userProds=lic.products||[];
+    const prod=userProds.find(p=>p.id===productId);
+    if(!prod){sendJSON(res,403,{valid:false,error:'Produto não licenciado para esta conta.'});return;}
+    // Retorna configurações do produto para este usuário
     sendJSON(res,200,{
-      valid:       true,
-      plan:        s.plan,
-      daysLeft:    s.daysLeft,
-      account,
-      productId,
-      productName: catalogProd.name,
-      // Configurações por usuário (sobrepõem defaults do catálogo)
-      minLots:     parseFloat(userProd.minLots)    || parseFloat(catalogProd.minLots)    || 0,
-      maxLots:     parseFloat(userProd.maxLots)    || parseFloat(catalogProd.maxLots)    || 0,
-      instances:   parseInt(userProd.instances)    || parseInt(catalogProd.instances)    || 1,
-      accountReal: userProd.accountReal || '',
-      accountDemo: userProd.accountDemo || '',
-      trialEnd:    lic.trialEnd   || null,
-      premiumEnd:  lic.premiumEnd || null,
-      message:     `Licença ativa — ${catalogProd.name} — ${s.daysLeft} dias restantes`
+      valid:true, plan:s.plan, daysLeft:s.daysLeft,
+      account, productId,
+      minLots:   prod.minLots   ||0,
+      maxLots:   prod.maxLots   ||0,
+      instances: prod.instances ||1,
+      accountReal: prod.accountReal||'',
+      accountDemo: prod.accountDemo||'',
+      trialEnd:  lic.trialEnd  ||null,
+      premiumEnd:lic.premiumEnd||null
     });
     return;
   }
 
-  // ── /validate — EA valida licença + auto-atribui produto Dashbot ──
+  // /validate — EA valida licença + auto-atribui produto Dashbot
   if(reqPath==='/validate'){
     const account = qs.get('account')||'';
     if(!account){sendJSON(res,400,{error:'account obrigatório'});return;}
-    lastLicLoad=0;
+    lastLicLoad=0; // força leitura fresca
     const lics = await getLics();
     const now  = Date.now();
     let changed=false;
+    // Garante produto Dashbot existe no catálogo
     if(!lics._products) { lics._products=[]; changed=true; }
     if(!lics._products.find(p=>p.id==='prod_dashbot')){
       lics._products.push({id:'prod_dashbot',name:'Dashbot',type:'dashboard',
@@ -296,6 +245,7 @@ http.createServer(async (req, res) => {
     } else {
       if(lics[account].lastSeen!==now){ lics[account].lastSeen=now; changed=true; }
     }
+    // Auto-atribui Dashbot ao usuário
     if(!lics[account].products) { lics[account].products=[]; changed=true; }
     if(!lics[account].products.find(p=>p.id==='prod_dashbot')){
       lics[account].products.push({id:'prod_dashbot',name:'Dashbot',assignedAt:now});
@@ -308,7 +258,7 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // ── /auth/check ───────────────────────────────────────────────
+  // /auth/check — verifica se conta tem senha
   if(reqPath==='/auth/check'){
     const account=qs.get('account')||'';
     if(!account){sendJSON(res,400,{error:'account obrigatório'});return;}
@@ -336,7 +286,7 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // ── /auth/mt5-link ────────────────────────────────────────────
+  // /auth/mt5-link — EA abre link de primeiro acesso
   if(reqPath==='/auth/mt5-link' && method==='POST'){
     const token=qs.get('token')||'';
     if(token!==PROXY_TOKEN){sendJSON(res,401,{error:'Token inválido'});return;}
@@ -344,8 +294,10 @@ http.createServer(async (req, res) => {
     let data; try{data=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
     const {account}=data;
     if(!account){sendJSON(res,400,{error:'account obrigatório'});return;}
+
     const lics=await getLics();
     const now=Date.now();
+    // Cria trial automaticamente se conta não existe
     if(!lics[account]){
       lics[account]={account,type:'trial',trialStart:now,
         trialEnd:now+TRIAL_DAYS*DAY_MS,firstSeen:now,lastSeen:now};
@@ -353,6 +305,7 @@ http.createServer(async (req, res) => {
     }
     const s=checkLic(lics[account]);
     if(!s.valid){sendJSON(res,403,{error:'Licença expirada',expired:true});return;}
+
     const db=await getAuth();
     const setupToken=genToken(account);
     if(!db.tokens) db.tokens={};
@@ -363,7 +316,7 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // ── /auth/setup-password ──────────────────────────────────────
+  // /auth/setup-password — cadastra senha no primeiro acesso
   if(reqPath==='/auth/setup-password' && method==='POST'){
     const body=await readBody(req);
     let data; try{data=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
@@ -388,7 +341,7 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // ── /auth/login ───────────────────────────────────────────────
+  // /auth/login — login com conta+senha
   if(reqPath==='/auth/login' && method==='POST'){
     const body=await readBody(req);
     let data; try{data=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
@@ -406,7 +359,7 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // ── /auth/verify ──────────────────────────────────────────────
+  // /auth/verify — verifica sessão
   if(reqPath==='/auth/verify'){
     const tok=qs.get('token')||req.headers['x-auth-token']||'';
     const sess=await verifySession(tok);
@@ -416,7 +369,7 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // ── /data ─────────────────────────────────────────────────────
+  // /data — dados do dashboard (usa cache em memória primeiro)
   if(reqPath==='/data'){
     const tok=qs.get('token')||req.headers['x-auth-token']||'';
     let sessionAccount=null;
@@ -427,6 +380,7 @@ http.createServer(async (req, res) => {
     } else {
       sessionAccount=qs.get('account')||null;
     }
+
     const serveData=(all)=>{
       if(!sessionAccount){sendJSON(res,200,all);return;}
       let acctData=null;
@@ -439,9 +393,13 @@ http.createServer(async (req, res) => {
           msg:'MT5 desconectado. Abra o Dashbot no MetaTrader 5.'});
       }
     };
+
+    // Usa cache em memória se disponível (atualizado pelo /update)
     if(global.dataCache&&Object.keys(global.dataCache).length>0){
-      serveData(global.dataCache); return;
+      serveData(global.dataCache);
+      return;
     }
+    // Fallback: lê do JSONBin
     return new Promise(resolve=>{
       jbReq('GET',DATA_BIN,null,(err,code,rawData)=>{
         if(err||code!==200){
@@ -451,7 +409,7 @@ http.createServer(async (req, res) => {
         }
         try{
           const all=JSON.parse(rawData);
-          if(typeof all==='object'&&!all.eas) global.dataCache=all;
+          if(typeof all==='object'&&!all.eas) global.dataCache=all; // popula cache
           serveData(all);
         }catch(e){sendJSON(res,500,{error:'Parse error'});}
         resolve();
@@ -459,7 +417,7 @@ http.createServer(async (req, res) => {
     });
   }
 
-  // ── /update ───────────────────────────────────────────────────
+  // /update — EA envia dados (indexado por account, com cache em memória)
   if(reqPath==='/update' && method==='POST'){
     const tok=qs.get('token')||'';
     if(tok!==PROXY_TOKEN){sendJSON(res,401,{error:'Não autorizado'});return;}
@@ -467,17 +425,24 @@ http.createServer(async (req, res) => {
     let payload;
     try{payload=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
     const account=String(payload.account||qs.get('account')||'');
+    // Usa cache em memória para evitar double-request ao JSONBin
     if(!global.dataCache||typeof global.dataCache!=='object') global.dataCache={};
-    if(account) global.dataCache[account]=payload;
-    else global.dataCache=payload;
+    if(account){
+      global.dataCache[account]=payload;
+    } else {
+      // Formato antigo sem account — armazena direto
+      global.dataCache=payload;
+    }
+    // Persiste no JSONBin de forma assíncrona (não bloqueia resposta ao EA)
     sendJSON(res,200,{ok:true});
+    // Salva no JSONBin em background
     jbReq('PUT',DATA_BIN,global.dataCache,(err,code)=>{
       if(err||code!==200) console.error('JSONBin save error:',err||code);
     });
     return;
   }
 
-  // ── /command ──────────────────────────────────────────────────
+  // /command — comandos EA/Web
   if(reqPath==='/command'){
     const tok=qs.get('token')||req.headers['x-auth-token']||'';
     if(tok!==PROXY_TOKEN){
@@ -504,16 +469,12 @@ http.createServer(async (req, res) => {
     }
   }
 
-  // ════════════════════════════════════════════════════════════════
-  //  /admin — Painel de administração
-  // ════════════════════════════════════════════════════════════════
+  // /admin — painel admin
   if(reqPath.startsWith('/admin')){
     if(!adminAuth(req)){
       res.writeHead(401,{'WWW-Authenticate':'Basic realm="Dashbot Admin"',...CORS});
       res.end('Não autorizado'); return;
     }
-
-    // GET /admin — página principal
     if((reqPath==='/admin'||reqPath==='/admin/')&&method==='GET'){
       const lics=await getLics(); const db=await getAuth();
       const now=Date.now();
@@ -553,12 +514,18 @@ http.createServer(async (req, res) => {
         <td>${p.type}</td>
         <td style="color:#8b949e">${p.description||'—'}</td>
         <td><button class="btn-sm btn-r" onclick="delProd('${p.id}')">✕ Remover</button></td>
-      </tr>`).join(''):'<tr><td colspan="5" style="color:#8b949e;text-align:center;padding:16px">Nenhum produto cadastrado. Use o formulário acima para adicionar.</td></tr>';
+      </tr>`).join(''):'<tr><td colspan="5" style="color:#8b949e;text-align:center;padding:16px">Nenhum produto</td></tr>';
       sendHTML(res,buildAdminHTML(rows,stats,prodRows,JSON.stringify(products)));
       return;
     }
-
-    // GET /admin/init
+    // GET /admin/licenses — lista todos os usuários/licenças
+    if(reqPath==='/admin/licenses'&&method==='GET'){
+      lastLicLoad=0;
+      const lics=await getLics();
+      sendJSON(res,200,{licenses:lics});
+      return;
+    }
+    // GET /admin/init — cria produto Dashbot se não existir
     if(reqPath==='/admin/init'&&method==='GET'){
       lastLicLoad=0;
       const lics=await getLics(); const now=Date.now();
@@ -574,8 +541,7 @@ http.createServer(async (req, res) => {
       }
       return;
     }
-
-    // POST /admin/register
+    // POST register new user manually
     if(reqPath==='/admin/register'&&method==='POST'){
       const body=await readBody(req);
       let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
@@ -593,8 +559,6 @@ http.createServer(async (req, res) => {
       sendJSON(res,ok?200:500,{ok,account:key});
       return;
     }
-
-    // POST /admin/license
     if(reqPath==='/admin/license'&&method==='POST'){
       const body=await readBody(req);
       let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
@@ -612,8 +576,6 @@ http.createServer(async (req, res) => {
       sendJSON(res,ok?200:500,{ok,expiresStr:ptDate(lics[key].premiumEnd)});
       return;
     }
-
-    // DELETE /admin/license
     if(reqPath==='/admin/license'&&method==='DELETE'){
       const body=await readBody(req);
       let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
@@ -622,8 +584,7 @@ http.createServer(async (req, res) => {
       sendJSON(res,await saveLics(lics)?200:500,{ok:true});
       return;
     }
-
-    // DELETE /admin/user
+    // DELETE user completely
     if(reqPath==='/admin/user'&&method==='DELETE'){
       const body=await readBody(req);
       let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
@@ -636,8 +597,7 @@ http.createServer(async (req, res) => {
       sendJSON(res,ok1&&ok2?200:500,{ok:ok1&&ok2});
       return;
     }
-
-    // PUT /admin/user
+    // PUT user info (name, email, phone)
     if(reqPath==='/admin/user'&&method==='PUT'){
       const body=await readBody(req);
       let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
@@ -651,8 +611,7 @@ http.createServer(async (req, res) => {
       sendJSON(res,ok?200:500,{ok});
       return;
     }
-
-    // GET /admin/user
+    // GET user info
     if(reqPath==='/admin/user'&&method==='GET'){
       const account=qs.get('account')||'';
       const lics=await getLics(); const db=await getAuth();
@@ -661,8 +620,7 @@ http.createServer(async (req, res) => {
       sendJSON(res,200,{account,name:lic.name||'',email:lic.email||'',phone:lic.phone||'',hasPw,products:lic.products||[]});
       return;
     }
-
-    // POST /admin/user-product
+    // POST assign product to user with per-user settings
     if(reqPath==='/admin/user-product'&&method==='POST'){
       const body=await readBody(req);
       let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
@@ -682,8 +640,7 @@ http.createServer(async (req, res) => {
       sendJSON(res,ok?200:500,{ok});
       return;
     }
-
-    // DELETE /admin/user-product
+    // DELETE remove product from user
     if(reqPath==='/admin/user-product'&&method==='DELETE'){
       const body=await readBody(req);
       let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
@@ -694,8 +651,6 @@ http.createServer(async (req, res) => {
       sendJSON(res,ok?200:500,{ok});
       return;
     }
-
-    // POST /admin/manual
     if(reqPath==='/admin/manual'&&method==='POST'){
       const body=await readBody(req);
       let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
@@ -718,8 +673,6 @@ http.createServer(async (req, res) => {
       sendJSON(res,ok?200:500,{ok,expiresStr:ptDate(end)});
       return;
     }
-
-    // POST /admin/reset-password
     if(reqPath==='/admin/reset-password'&&method==='POST'){
       const body=await readBody(req);
       let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
@@ -730,8 +683,6 @@ http.createServer(async (req, res) => {
       sendJSON(res,await saveAuth(db)?200:500,{ok:true});
       return;
     }
-
-    // /admin/products — CRUD do catálogo de produtos
     if(reqPath==='/admin/products'){
       const lics=await getLics();
       if(method==='GET'){sendJSON(res,200,{products:lics._products||[]});return;}
@@ -740,21 +691,10 @@ http.createServer(async (req, res) => {
         let d; try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
         if(!d.name||!d.type){sendJSON(res,400,{error:'name e type obrigatórios'});return;}
         if(!lics._products) lics._products=[];
-        const prod={
-          id:'prod_'+Date.now(),
-          name:d.name,
-          type:d.type,
-          description:d.description||'',
-          price:d.price||null,
-          currency:d.currency||'BRL',
-          trialDays:parseInt(d.trialDays)||0,
-          // Defaults globais de lote/instâncias (podem ser sobrescritos por usuário)
-          minLots:parseFloat(d.minLots)||0,
-          maxLots:parseFloat(d.maxLots)||0,
-          instances:parseInt(d.instances)||1,
-          active:true,
-          createdAt:Date.now()
-        };
+        const prod={id:'prod_'+Date.now(),name:d.name,type:d.type,
+          description:d.description||'',price:d.price||null,currency:d.currency||'BRL',
+          trialDays:d.trialDays||0,minLots:d.minLots||0,maxLots:d.maxLots||0,
+          instances:d.instances||1,active:true,createdAt:Date.now()};
         lics._products.push(prod);
         const ok=await saveLics(lics);
         sendJSON(res,ok?200:500,{ok,product:prod});
@@ -776,8 +716,7 @@ http.createServer(async (req, res) => {
         return;
       }
     }
-
-    sendJSON(res,404,{error:'Rota admin não encontrada'});
+    sendJSON(res,404,{error:'Rota não encontrada'});
     return;
   }
 
@@ -785,10 +724,12 @@ http.createServer(async (req, res) => {
 
 }).listen(PORT, ()=>{
   console.log("Dashbot Server v3 iniciado na porta "+PORT);
+  // Ping inicial após 30s
   setTimeout(()=>{
     const p=https.request({hostname:"dashbot.investidorbot.com",path:"/ping",method:"GET"},()=>{}).on("error",()=>{});
     p.end();
   },30000);
+  // Keep-alive: ping a cada 14 minutos para evitar sleep no Render Free
   setInterval(()=>{
     const pingReq = https.request({
       hostname: 'dashbot.investidorbot.com',
@@ -798,9 +739,7 @@ http.createServer(async (req, res) => {
   }, 10 * 60 * 1000);
 });
 
-// ════════════════════════════════════════════════════════════════
-//  Admin HTML
-// ════════════════════════════════════════════════════════════════
+// ── Admin HTML ────────────────────────────────────────────────────
 function buildAdminHTML(rows,stats,prodRows,productsJson){
 const prodsJs=productsJson||'[]';
 return `<!DOCTYPE html><html lang="pt-BR"><head>
@@ -845,6 +784,7 @@ tr:hover td{background:#1c2128}
 </style></head><body>
 <h1>🤖 Dashbot Admin v3</h1>
 <p class="sub">Licenças · Usuários · Produtos</p>
+
 <div class="stats">
   <div class="stat"><div class="n">${stats.total}</div><div class="l">Total</div></div>
   <div class="stat"><div class="n" style="color:#10b981">${stats.premium}</div><div class="l">Premium</div></div>
@@ -944,15 +884,12 @@ tr:hover td{background:#1c2128}
   <div class="card-title">📦 Catálogo de Produtos</div>
   <div id="msg3" class="msg"></div>
   <div class="row" style="margin-bottom:10px">
-    <div class="fg"><label>Nome *</label><input type="text" id="pName" placeholder="Ex: Iron Robot v1" style="width:140px"></div>
+    <div class="fg"><label>Nome *</label><input type="text" id="pName" placeholder="Ex: Hulk EA v2" style="width:140px"></div>
     <div class="fg"><label>Tipo</label><select id="pType" style="width:130px"><option value="ea">Expert Advisor</option><option value="indicator">Indicador</option><option value="dashboard">Dashboard</option><option value="other">Outro</option></select></div>
-    <div class="fg"><label>Min Lote</label><input type="number" id="pMinLots" value="0" step="0.01" style="width:70px" placeholder="0=livre"></div>
-    <div class="fg"><label>Max Lote</label><input type="number" id="pMaxLots" value="0" step="0.01" style="width:70px" placeholder="0=livre"></div>
-    <div class="fg"><label>Instâncias</label><input type="number" id="pInstances" value="1" min="1" style="width:65px"></div>
     <div class="fg" style="flex:1"><label>Descrição</label><input type="text" id="pDesc" style="width:100%"></div>
     <button class="btn" onclick="addProd()">+ Produto</button>
   </div>
-  <table><thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th>Min Lote</th><th>Max Lote</th><th>Inst.</th><th>Descrição</th><th></th></tr></thead>
+  <table><thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th>Descrição</th><th></th></tr></thead>
   <tbody>${prodRows}</tbody></table>
 </div>
 
@@ -973,25 +910,48 @@ function sm(id,msg,ok){const el=document.getElementById(id);if(!el)return;el.tex
 async function api(method,path,body){const r=await fetch(path,{method,headers:{'Content-Type':'application/json','Authorization':AUTH},body:body?JSON.stringify(body):undefined});return r.json();}
 function cm(id){document.getElementById(id).classList.remove('open');}
 function om(id){document.getElementById(id).classList.add('open');}
+
+// Fechar modal clicando fora
 document.addEventListener('click',function(e){if(e.target.classList.contains('modal-bg'))e.target.classList.remove('open');});
 
+// Licença
 function renovarModal(a,n){_la=a;document.getElementById('lAcct').value=a;document.getElementById('lName').value=n||'';const d=new Date();d.setMonth(d.getMonth()+1);document.getElementById('lDate').value=d.toISOString().split('T')[0];om('mLic');}
 function lAdd(n,u){const cur=document.getElementById('lDate').value;const d=cur?new Date(cur):new Date();if(u==='m')d.setMonth(d.getMonth()+n);else d.setDate(d.getDate()+n);document.getElementById('lDate').value=d.toISOString().split('T')[0];}
 async function saveLic(){const endDate=document.getElementById('lDate').value;const name=document.getElementById('lName').value;if(!endDate){sm('msgLic','Selecione uma data',false);return;}const r=await api('POST','/admin/license',{account:_la,name,endDate});if(r.ok){sm('msgLic','✅ Até '+r.expiresStr,true);setTimeout(()=>location.reload(),1200);}else sm('msgLic','❌ '+(r.error||'Erro'),false);}
+
+// Ativar premium rápido
 async function ativar(){const a=document.getElementById('iAcc').value;const n=document.getElementById('iName').value;const m=document.getElementById('iMon').value;const d=document.getElementById('iDate').value;if(!a){sm('msg','⚠️ Conta MT5 obrigatória',false);return;}const r=await api('POST','/admin/license',{account:a,name:n,months:parseInt(m),endDate:d||undefined});if(r.ok){sm('msg','✅ Premium até '+r.expiresStr,true);setTimeout(()=>location.reload(),1200);}else sm('msg','❌ '+(r.error||'Erro'),false);}
+
+// Bônus
 function bonusModal(a){_ba=a;document.getElementById('bAcct').value=a;const d=new Date();d.setDate(d.getDate()+30);document.getElementById('bDate').value=d.toISOString().split('T')[0];om('mBonus');}
 function bAdd(n){const cur=document.getElementById('bDate').value;const d=cur?new Date(cur):new Date();d.setDate(d.getDate()+n);document.getElementById('bDate').value=d.toISOString().split('T')[0];}
 async function saveBonus(){const endDate=document.getElementById('bDate').value;const type=document.getElementById('bType').value;if(!endDate){sm('msgBonus','Selecione uma data',false);return;}const r=await api('POST','/admin/manual',{account:_ba,type,endDate});if(r.ok){sm('msgBonus','✅ Até '+r.expiresStr,true);setTimeout(()=>location.reload(),1200);}else sm('msgBonus','❌ '+(r.error||'Erro'),false);}
+
+// Editar
 function editUser(a,n,e,p){_ea=a;document.getElementById('eAcct').value=a;document.getElementById('eName').value=n||'';document.getElementById('eEmail').value=e||'';document.getElementById('ePhone').value=p||'';om('mEdit');}
 async function saveEdit(){const r=await api('PUT','/admin/user',{account:_ea,name:document.getElementById('eName').value,email:document.getElementById('eEmail').value,phone:document.getElementById('ePhone').value});if(r.ok){sm('msgEdit','✅ Salvo!',true);setTimeout(()=>location.reload(),1000);}else sm('msgEdit','❌ Erro',false);}
+
+// Atribuir produto
 function addUserProd(a){_pa=a;document.getElementById('pAcct').value=a;const sel=document.getElementById('pProdSel');sel.innerHTML='<option value="">Selecione...</option>';PRODUCTS.forEach(p=>{sel.innerHTML+='<option value="'+p.id+'">'+p.name+'</option>';});document.getElementById('pMinL').value='0';document.getElementById('pMaxL').value='0';document.getElementById('pInst').value='1';document.getElementById('pReal').value='';document.getElementById('pDemo').value='';om('mProd');}
 async function saveProd(){const pid=document.getElementById('pProdSel').value;if(!pid){sm('msgProd','Selecione um produto',false);return;}const prod=PRODUCTS.find(p=>p.id===pid);const r=await api('POST','/admin/user-product',{account:_pa,productId:pid,name:prod?prod.name:pid,minLots:document.getElementById('pMinL').value,maxLots:document.getElementById('pMaxL').value,instances:document.getElementById('pInst').value,accountReal:document.getElementById('pReal').value,accountDemo:document.getElementById('pDemo').value});if(r.ok){sm('msgProd','✅ Atribuído!',true);setTimeout(()=>location.reload(),1000);}else sm('msgProd','❌ '+(r.error||'Erro'),false);}
+
+// Registro manual
 async function saveReg(){const a=document.getElementById('rAcct').value;if(!a){sm('msgReg','⚠️ Conta MT5 obrigatória',false);return;}const r=await api('POST','/admin/register',{account:a,name:document.getElementById('rName').value,email:document.getElementById('rEmail').value,phone:document.getElementById('rPhone').value});if(r.ok){sm('msgReg','✅ Usuário registrado!',true);setTimeout(()=>location.reload(),1200);}else sm('msgReg','❌ '+(r.error||'Erro de duplicata'),false);}
+
+// Remover produto do usuário
 async function rmUserProd(a,pid){if(!confirm('Remover produto?'))return;const r=await api('DELETE','/admin/user-product',{account:a,productId:pid});if(r.ok)location.reload();}
+
+// Revogar
 async function revogar(a){if(!confirm('Revogar licença de '+a+'?'))return;const r=await api('DELETE','/admin/license',{account:a});if(r.ok)location.reload();}
+
+// Reset senha
 async function resetPw(a){if(!confirm('Resetar senha de '+a+'?\\nO usuário precisará acessar via botão [Acessar Dashbot Web] no MT5.'))return;const r=await api('POST','/admin/reset-password',{account:a});if(r.ok)alert('✅ Senha resetada!');}
+
+// Remover usuário
 async function delUser(a){if(!confirm('⚠️ Remover COMPLETAMENTE o usuário '+a+'?\\nIsso apaga licença, senha e todos os dados.'))return;const r=await api('DELETE','/admin/user',{account:a});if(r.ok)location.reload();else alert('❌ Erro ao remover');}
-async function addProd(){const n=document.getElementById('pName').value;if(!n){sm('msg3','⚠️ Nome obrigatório',false);return;}const r=await api('POST','/admin/products',{name:n,type:document.getElementById('pType').value,description:document.getElementById('pDesc').value,minLots:document.getElementById('pMinLots').value,maxLots:document.getElementById('pMaxLots').value,instances:document.getElementById('pInstances').value});if(r.ok){sm('msg3','✅ Produto adicionado! ID: '+r.product.id,true);setTimeout(()=>location.reload(),1500);}else sm('msg3','❌ '+(r.error||'Erro'),false);}
-async function delProd(id){if(!confirm('Remover produto do catálogo?\\nOs usuários que possuem este produto NÃO serão afetados.'))return;const r=await api('DELETE','/admin/products',{id});if(r.ok)location.reload();}
+
+// Produto catálogo
+async function addProd(){const n=document.getElementById('pName').value;if(!n){sm('msg3','⚠️ Nome obrigatório',false);return;}const r=await api('POST','/admin/products',{name:n,type:document.getElementById('pType').value,description:document.getElementById('pDesc').value});if(r.ok){sm('msg3','✅ Produto adicionado!',true);setTimeout(()=>location.reload(),1000);}else sm('msg3','❌ '+(r.error||'Erro'),false);}
+async function delProd(id){if(!confirm('Remover produto?'))return;const r=await api('DELETE','/admin/products',{id});if(r.ok)location.reload();}
 </script></body></html>`;
 }
