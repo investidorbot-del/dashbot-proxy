@@ -2,686 +2,1265 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Dashbot Admin</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="format-detection" content="telephone=no">
+<title>Dashbot — InvestidorBot</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
+/* ─── Reset & Base ─── */
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;background:#0d1117;color:#e6edf3;padding:20px}
-h1{color:#58a6ff;margin-bottom:4px;font-size:22px;display:flex;align-items:center;gap:12px} /* Ajustado para alinhar logo e texto */
-.sub{color:#8b949e;font-size:13px;margin-bottom:20px}
-.stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
-.stat{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px 20px;min-width:100px;text-align:center}
-.stat .n{font-size:26px;font-weight:700;color:#58a6ff}
-.stat .l{font-size:11px;color:#8b949e;text-transform:uppercase;margin-top:2px}
-.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px;margin-bottom:16px}
-.card-title{font-size:13px;font-weight:700;color:#58a6ff;margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th{text-align:left;padding:6px 8px;border-bottom:1px solid #30363d;color:#8b949e;font-size:10px;text-transform:uppercase}
-td{padding:6px 8px;border-bottom:1px solid #21262d;vertical-align:middle}
-tr:hover td{background:#1c2128}
-.badge{display:inline-block;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;color:#fff}
-.btn{background:#1f6feb;color:#fff;border:none;padding:7px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
-.btn:hover{background:#388bfd}
-.btn-sm{background:#21262d;color:#e6edf3;border:1px solid #30363d;padding:3px 7px;border-radius:4px;cursor:pointer;font-size:10px;margin:1px}
-.btn-sm:hover{background:#30363d}
-.btn-red{background:#f85149;color:white!important}
-.btn-green{background:#10b981;color:white!important}
-.btn-blue{background:#1f6feb;color:white!important}
-.form-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
-.fg{display:flex;flex-direction:column;gap:3px}
-label{font-size:10px;color:#8b949e;font-weight:600;text-transform:uppercase}
-input,select{background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:5px 8px;border-radius:5px;font-size:12px}
-input:focus,select:focus{outline:none;border-color:#388bfd}
-.msg{padding:7px 12px;border-radius:6px;font-size:12px;margin-bottom:10px;display:none}
-.msg.ok{background:#0d2e1f;border:1px solid #10b981;color:#10b981}
-.msg.err{background:#2d1117;border:1px solid #f85149;color:#f85149}
+:root{
+  --bg:       #08080f;
+  --bg2:      #0d0f1a;
+  --bg3:      #131624;
+  --card:     #0f1120;
+  --bdr:      #1e2438;
+  --sep:      #1a1f35;
+  --txt:      #e8ecf4;
+  --muted:    #8892b0;
+  --dim:      #4a5272;
+  --blue:     #288cff;
+  --blue2:    #0f3270;
+  --green:    #2dd46a;
+  --green2:   #0a3d1e;
+  --red:      #e03333;
+  --red2:     #3d0d0d;
+  --yellow:   #f0b820;
+  --yellow2:  #3d2e06;
+  --radius:   10px;
+  --font:     'Inter', system-ui, sans-serif;
+  --mono:     'JetBrains Mono', monospace;
+}
+body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:100vh;overflow-x:hidden}
 
-/* Modal */
-.modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background-color:rgba(13,17,23,0.8)}
-.modal-content{background-color:#161b22;margin:5% auto;padding:20px;border:1px solid #30363d;border-radius:10px;width:90%;max-width:650px}
-.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
-.modal-title{color:#58a6ff;font-weight:700}
-.close{color:#8b949e;font-size:24px;font-weight:700;cursor:pointer}
-.close:hover{color:#e6edf3}
-.modal-body{display:flex;flex-direction:column;gap:12px}
-.account-row{display:flex;gap:8px;align-items:flex-end}
-.remove-account{background:#f85149;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer}
-.loading{color:#8b949e;text-align:center;padding:10px}
-.product-account-row{display:flex;gap:8px;align-items:flex-end;margin-bottom:8px}
-.remove-product{background:#f85149;color:white;border:none;padding:3px 7px;border-radius:4px;cursor:pointer;font-size:12px}
+/* Filtros de período */
+.period-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.pf-btn{padding:5px 14px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid var(--bdr);background:var(--bg3);color:var(--muted);transition:all .2s;letter-spacing:.05em}
+.pf-btn.active{background:var(--blue2);border-color:var(--blue);color:var(--blue)}
+.pf-btn:hover:not(.active){border-color:var(--blue);color:var(--txt)}
+
+/* Tooltip Premium para usuários Free */
+.free-lock{position:relative;cursor:not-allowed}
+.free-lock::after{
+  content:'🔒 Exclusivo para assinantes Premium';
+  position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
+  background:#0a0c18;border:1px solid var(--blue);color:var(--txt);
+  font-size:11px;font-weight:600;padding:6px 12px;border-radius:8px;
+  white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .2s;z-index:100;
+  box-shadow:0 4px 20px rgba(40,140,255,.3)
+}
+.free-lock:hover::after{opacity:1}
+.free-lock .btn-g,.free-lock .btn-ea{pointer-events:none;opacity:.35}
+
+/* Títulos dos cards — Inter */
+.card-heading{font-family:'Inter',sans-serif;font-weight:800;font-size:13px;letter-spacing:.02em}
+.gp-title{font-family:'Inter',sans-serif;font-weight:900;font-size:14px;letter-spacing:.03em;color:var(--blue)}
+.ea-name{font-family:'Inter',sans-serif;font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:100vh;overflow-x:hidden}
+
+/* ─── Layout ─── */
+.app{display:-webkit-flex;display:flex;-webkit-flex-direction:column;flex-direction:column;min-height:100vh;min-height:-webkit-fill-available}
+.header{background:var(--bg2);border-bottom:1px solid var(--bdr);padding:12px 20px;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:space-between;justify-content:space-between;position:sticky;top:0;z-index:100}
+.logo{display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;gap:10px}
+.logo-icon{width:36px;height:36px;background:transparent;border:none;border-radius:8px;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;font-size:18px}
+.logo-text{font-size:20px;font-weight:800;letter-spacing:.02em}
+.logo-text span{color:var(--blue)}
+.header-right{display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;gap:12px}
+.badge-plan{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid var(--blue);color:var(--blue);background:var(--blue2);letter-spacing:.06em}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);-webkit-animation:pulse 2s infinite;animation:pulse 2s infinite}
+.status-txt{font-size:11px;color:var(--muted);font-family:var(--mono)}
+@-webkit-keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+.main{padding:16px;display:-webkit-flex;display:flex;-webkit-flex-direction:column;flex-direction:column;gap:16px;-webkit-flex:1;flex:1}
+
+/* ─── Stats Bar ─── */
+.stats-bar{display:grid;grid-template-columns:repeat(4,1fr) auto auto;gap:8px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--radius);padding:12px 16px;align-items:center}
+.stat-item{display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--sep);padding-right:16px}
+.stat-item:last-of-type{border-right:none}
+.stat-label{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.stat-value{font-size:18px;font-weight:800;font-family:var(--mono)}
+.stat-sub{font-size:11px;color:var(--muted)}
+
+/* Roscas */
+.donuts{display:flex;gap:24px;padding-left:16px}
+.donut-wrap{display:flex;flex-direction:column;align-items:center;gap:4px}
+.donut-label-top{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.05em;text-transform:uppercase;text-align:center}
+.donut-canvas-wrap{position:relative}
+.donut-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;font-family:var(--mono)}
+.donut-legend{display:flex;gap:8px;font-size:10px;color:var(--muted)}
+.donut-legend span{display:flex;align-items:center;gap:3px}
+.donut-legend span::before{content:'';width:6px;height:6px;border-radius:50%;display:inline-block}
+.leg-blue::before{background:var(--blue)}
+.leg-red::before{background:var(--red)}
+
+/* ─── Grid de Cards ─── */
+.section-title{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+
+.global-cards{display:grid;grid-template-columns:220px 1fr;gap:12px}
+
+/* Painel Global */
+.global-panel{background:var(--card);border:1.5px solid var(--blue);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:10px;position:relative;overflow:hidden}
+.global-panel::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--blue),#00c8ff)}
+.gp-title{font-size:13px;font-weight:800;color:var(--blue);letter-spacing:.04em}
+.gp-sub{font-size:10px;color:var(--muted)}
+.metric-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0}
+.metric-row .mlbl{color:var(--muted);font-size:10px;font-weight:600;letter-spacing:.05em}
+.metric-row .mval{font-weight:700;font-family:var(--mono);font-size:12px}
+.gp-sep{border:none;border-top:1px solid var(--sep);margin:4px 0}
+.rent-big{font-size:22px;font-weight:800;font-family:var(--mono);text-align:right}
+.meta-stop{display:flex;flex-direction:column;gap:6px}
+.ms-label{font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+.ms-input{background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);font-family:var(--mono);font-size:12px;padding:6px 8px;width:100%;outline:none;transition:border .2s}
+.ms-input:focus{border-color:var(--blue)}
+.ms-input.stop:focus{border-color:var(--red)}
+.ms-input.stop{border-color:color-mix(in srgb,var(--red) 40%,var(--bdr))}
+.btn-apply{background:var(--blue2);border:1px solid var(--blue);color:var(--blue);font-family:var(--font);font-size:11px;font-weight:700;padding:6px;border-radius:6px;cursor:pointer;width:100%;letter-spacing:.06em;transition:all .2s}
+.btn-apply:hover{background:var(--blue);color:#fff}
+.progress-bar-wrap{display:flex;flex-direction:column;gap:3px}
+.progress-bar{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;border-radius:3px;transition:width .5s}
+.progress-label{font-size:10px;color:var(--muted);display:flex;justify-content:space-between}
+
+/* Botões globais */
+.global-btns{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:auto}
+.btn-g{border:none;border-radius:7px;padding:8px 4px;font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;letter-spacing:.04em;border:1px solid transparent}
+.btn-g.ligar{background:var(--green2);color:var(--green);border-color:var(--green)}
+.btn-g.ligar:hover{background:var(--green);color:#000}
+.btn-g.pausar{background:var(--bg3);color:var(--txt);border-color:var(--bdr)}
+.btn-g.pausar:hover{background:var(--bdr)}
+.btn-g.fechar{background:var(--red2);color:var(--red);border-color:var(--red)}
+.btn-g.fechar:hover{background:var(--red);color:#fff}
+.btn-g:disabled{opacity:.4;cursor:not-allowed}
+
+/* Alerta meta/stop */
+.alert-banner{padding:8px 14px;border-radius:7px;font-size:12px;font-weight:700;text-align:center;display:none;animation:fadeIn .4s}
+.alert-banner.meta{background:var(--green2);border:1px solid var(--green);color:var(--green)}
+.alert-banner.stop{background:var(--red2);border:1px solid var(--red);color:var(--red)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+
+/* Cards de EAs */
+.ea-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.ea-card{background:var(--card);border-radius:var(--radius);padding:12px;border:1.5px solid var(--bdr);position:relative;overflow:hidden;transition:border-color .3s}
+.ea-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.ea-card:hover{border-color:var(--blue)}
+.ea-card-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.ea-avatar{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0;border:1.5px solid}
+.ea-name-wrap{flex:1;min-width:0}
+.ea-name{font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ea-id{font-size:9px;color:var(--muted);font-family:var(--mono)}
+.ea-badges{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;border:1px solid;letter-spacing:.05em}
+.badge.ativo{background:var(--green2);color:var(--green);border-color:var(--green)}
+.badge.inativo{background:var(--red2);color:var(--red);border-color:var(--red)}
+.badge.pausado{background:var(--yellow2);color:var(--yellow);border-color:var(--yellow)}
+
+.ea-metrics{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
+.em-row{display:flex;justify-content:space-between;font-size:10px}
+.em-lbl{color:var(--muted)}
+.em-val{font-weight:700;font-family:var(--mono)}
+.em-sep{border:none;border-top:1px solid var(--sep);margin:4px 0}
+.ea-rent{font-size:18px;font-weight:800;font-family:var(--mono);text-align:right;margin-bottom:8px}
+
+.ea-btns{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}
+.btn-ea{border:none;border-radius:5px;padding:5px 2px;font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer;transition:all .2s;border:1px solid transparent}
+.btn-ea.ligar{background:var(--green2);color:var(--green);border-color:var(--green)}
+.btn-ea.ligar:hover{background:var(--green);color:#000}
+.btn-ea.pausar{background:var(--bg3);color:var(--txt);border-color:var(--bdr)}
+.btn-ea.pausar:hover{background:var(--bdr)}
+.btn-ea.fechar{background:var(--red2);color:var(--red);border-color:var(--red)}
+.btn-ea.fechar:hover{background:var(--red);color:#fff}
+.btn-ea:disabled{opacity:.35;cursor:not-allowed}
+
+/* ─── Gráfico ─── */
+.chart-section{background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--radius);padding:14px;width:100%;box-sizing:border-box}
+.chart-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px}
+.chart-title{font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+.chart-legend{display:flex;gap:8px;flex-wrap:wrap}
+.leg-btn{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid;cursor:pointer;transition:all .2s;background:transparent}
+.leg-btn.active{opacity:1}
+.leg-btn.inactive{opacity:.35}
+.leg-dot{width:7px;height:7px;border-radius:50%}
+.chart-canvas-wrap{position:relative;height:280px;width:100%}
+canvas#chart{display:block;width:100%!important;height:100%!important}
+
+/* ─── Modo somente leitura ─── */
+.readonly-overlay{position:absolute;inset:0;background:rgba(0,0,0,.6);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);z-index:10}
+.readonly-msg{text-align:center;color:var(--muted);font-size:12px;line-height:1.6}
+.readonly-msg strong{color:var(--txt);display:block;margin-bottom:4px;font-size:14px}
+
+/* ─── Empty / Loading ─── */
+.loading{display:flex;align-items:center;justify-content:center;height:200px;color:var(--muted);font-size:13px;gap:10px}
+.spinner{width:20px;height:20px;border:2px solid var(--bdr);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.no-data{text-align:center;padding:40px;color:var(--muted);font-size:13px}
+
+/* ─── Responsivo ─── */
+@media(max-width:768px){
+  .main{padding:10px;gap:10px}
+  .stats-bar{grid-template-columns:repeat(2,1fr);gap:6px}
+  .donuts{flex-direction:row;padding-left:0;border-top:1px solid var(--sep);padding-top:10px;grid-column:1/-1;justify-content:center;gap:16px}  .global-cards{grid-template-columns:1fr}
+  .ea-grid{grid-template-columns:repeat(2,1fr);gap:6px}
+  .stat-item{border-right:none;border-bottom:1px solid var(--sep);padding-bottom:8px;padding-right:0}
+  .stat-value{font-size:16px}
+  .stat-label{font-size:9px}
+  .chart-canvas-wrap{height:180px}
+  .header{padding:10px 14px}
+  .logo-text{font-size:17px}
+  .badge-plan{font-size:10px;padding:2px 8px}
+  .status-txt{display:none}
+  .global-panel{padding:12px}
+  .ea-card{padding:10px}
+  .ea-name{font-size:12px}
+  .ea-rent{font-size:16px}
+  .btn-ea{padding:4px 2px;font-size:9px}
+  .gp-title{font-size:12px}
+  .metric-row .mval{font-size:11px}
+  .rent-big{font-size:18px}
+}
+@media(max-width:420px){
+  .ea-grid{grid-template-columns:1fr}
+  .donuts{flex-direction:row;gap:12px;justify-content:center}
+  .stats-bar{grid-template-columns:1fr 1fr}
+  .global-btns{grid-template-columns:repeat(3,1fr)}
+  .btn-g{font-size:10px;padding:7px 2px}
+  .chart-canvas-wrap{height:150px}
+}
 </style>
 </head>
 <body>
-<!-- LOGO E TÍTULO ATUALIZADOS -->
-<h1>
-  <img src="data:image/png;base64,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" alt="iBot" style="height: 32px; width: auto; border-radius: 4px;"> 
-  Dashbot Admin
-</h1>
-<p class="sub">Licenças · Usuários · Produtos</p>
+<div class="app" id="app" style="display:none">
 
-<div class="stats">
-  <div class="stat"><div class="n" id="total-users">0</div><div class="l">Total</div></div>
-  <div class="stat"><div class="n" style="color:#10b981" id="premium-users">0</div><div class="l">Teste</div></div>
-  <div class="stat"><div class="n" style="color:#3b82f6" id="trial-users">0</div><div class="l">Assinantes</div></div>
-  <div class="stat"><div class="n" style="color:#ef4444" id="expired-users">0</div><div class="l">Vitalícios</div></div>
-  <div class="stat"><div class="n" style="color:#f0c800" id="active-users">0</div><div class="l">Expirados</div></div>
-</div>
-
-<div class="card">
-  <div class="card-title">🎁 Inserir Manualmente (Bônus / Trial)</div>
-  <div id="msg2" class="msg"></div>
-  <div class="form-row">
-    <div class="fg">
-      <label>Nome</label>
-      <input type="text" id="mName" placeholder="Nome" style="width:150px">
-    </div>
-    <div class="fg">
-      <label>Produto</label>
-      <select id="mProduct" style="width:150px">
-        <option value="">Selecione...</option>
-      </select>
-    </div>
-    <div class="fg">
-      <label>Conta MT5</label>
-      <input type="number" id="mAcc" placeholder="12345678" style="width:130px">
-    </div>
-    <div class="fg">
-      <label>Tipo de Conta</label>
-      <select id="mAccountType" style="width:100px">
-        <option value="demo">Demo</option>
-        <option value="real">Real</option>
-      </select>
-    </div>
-    <div class="fg">
-      <label>Data Final</label>
-      <input type="date" id="mExpiry" style="width:140px">
-    </div>
-    <button class="btn" style="background:#10b981" onclick="inserirManual()">➕ Inserir</button>
+<!-- HEADER -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon"><img src="data:image/png;base64,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" style="width:28px;height:28px;object-fit:contain;filter:brightness(0) invert(1)" alt="iBot"></div>
+    <div class="logo-text">Dash<span>bot</span></div>
   </div>
-</div>
-
-<div class="card">
-  <div class="card-title">📦 Produtos (EAs, Indicadores, etc.)</div>
-  <div id="msg3" class="msg"></div>
-  <div class="form-row" style="margin-bottom:12px">
-    <div class="fg">
-      <label>Nome</label>
-      <input type="text" id="pName" placeholder="Nome do produto" style="width:140px">
-    </div>
-    <div class="fg">
-      <label>Tipo</label>
-      <select id="pType" style="width:120px">
-        <option value="ea">Expert Advisor</option>
-        <option value="indicator">Indicador</option>
-        <option value="dashboard">Dashboard</option>
-        <option value="other">Outro</option>
-      </select>
-    </div>
-    <div class="fg">
-      <label>Descrição</label>
-      <input type="text" id="pDesc" placeholder="Opcional" style="width:180px">
-    </div>
-    <button class="btn" onclick="addProd()">+ Produto</button>
+  <div class="header-right">
+    <span class="badge-plan" id="badgePlan">FREE</span>
+    <span class="status-dot" id="statusDot" style="background:var(--muted);box-shadow:none"></span>
+    <span class="status-txt" id="statusTxt">Conectando...</span>
+    <button onclick="logout()" style="background:transparent;border:1px solid #1e2438;color:#64748b;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;margin-left:8px">↩ Sair</button>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Nome</th>
-        <th>Tipo</th>
-        <th>Descrição</th>
-        <th>Ativo</th>
-        <th>Ações</th>
-      </tr>
-    </thead>
-    <tbody id="productsTable">
-      <tr><td colspan="6" class="loading">Carregando produtos...</td></tr>
-    </tbody>
-  </table>
+</header>
+
+<div class="main" id="main">
+  <div class="loading"><div class="spinner"></div>Buscando dados do MT5...</div>
 </div>
 
-<div class="card">
-  <div class="card-title">👥 Usuários Registrados</div>
-  <div class="form-row" style="margin-bottom:15px; justify-content: space-between;">
-    <button class="btn" onclick="openAddUserModal()">+ Adicionar Usuário</button>
-    <div class="fg">
-      <label>Buscar Usuário</label>
-      <input type="text" id="searchUser" placeholder="Nome, email ou telefone..." oninput="renderUsersTable()" style="width:200px">
-    </div>
-  </div>
-  <table>
-    <thead>
-      <tr>
-        <th>Nome</th>
-        <th>Email</th>
-        <th>Telefone</th>
-        <th>Produtos</th>
-        <th>Contas</th>
-        <th>Validades</th>
-        <th>Ações</th>
-      </tr>
-    </thead>
-    <tbody id="usersTable">
-      <tr><td colspan="7" class="loading">Carregando usuários...</td></tr>
-    </tbody>
-  </table>
-</div>
+</div><!-- /app -->
 
-<!-- Modal para Adicionar/Editar Usuário -->
-<div id="userModal" class="modal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h3 class="modal-title" id="userModalTitle">➕ Adicionar Usuário</h3>
-      <span class="close" onclick="closeUserModal()">&times;</span>
-    </div>
-    <div class="modal-body">
-      <div id="modalMsg" class="msg"></div>
-      <input type="hidden" id="uId" value="">
-      <div class="form-row">
-        <div class="fg" style="width:100%">
-          <label>Nome</label>
-          <input type="text" id="uName" placeholder="Nome completo" style="width:100%">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="fg" style="width:100%">
-          <label>Email</label>
-          <input type="email" id="uEmail" placeholder="email@exemplo.com" style="width:100%">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="fg" style="width:100%">
-          <label>Telefone</label>
-          <input type="tel" id="uPhone" placeholder="(11) 99999-9999" style="width:100%">
-        </div>
-      </div>
-      
-      <div class="card-title">Produtos e Contas</div>
-      <div id="productsContainer">
-        <div class="product-account-row">
-          <div class="fg" style="flex:2">
-            <label>Produto</label>
-            <select class="user-product" style="width:100%">
-              <option value="">Selecione...</option>
-            </select>
-          </div>
-          <div class="fg" style="flex:1">
-            <label>Conta MT5</label>
-            <input type="number" class="user-account" placeholder="12345678">
-          </div>
-          <div class="fg" style="width:100px">
-            <label>Tipo</label>
-            <select class="user-account-type">
-              <option value="demo">Demo</option>
-              <option value="real">Real</option>
-            </select>
-          </div>
-          <div class="fg" style="flex:1">
-            <label>Expiração</label>
-            <input type="date" class="product-expiry" style="width:100%">
-          </div>
-          <button class="remove-product" onclick="removeProduct(this)">×</button>
-        </div>
-      </div>
-      <button class="btn-sm" onclick="addProductField()" style="margin-top:8px">+ Adicionar Produto</button>
-      
-      <button class="btn" id="userModalButton" onclick="saveUser()" style="margin-top:15px">Adicionar Usuário</button>
-    </div>
-  </div>
-</div>
-
+<!-- Chart.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
-const DB_KEYS = { PRODUCTS: 'dashbot_products', USERS: 'dashbot_users', LICENSES: 'dashbot_licenses' };
-const INITIAL_PRODUCTS = [
-  { id: 1, name: 'HULK', type: 'Expert Advisor', description: 'Robô de trading para futuros', active: true },
-  { id: 2, name: 'TORNADO', type: 'Expert Advisor', description: 'Robô de alta frequência', active: true },
-  { id: 3, name: 'ADAM', type: 'Expert Advisor', description: 'Robô para scalp', active: true },
-  { id: 4, name: 'SNAKE', type: 'Indicador', description: 'Indicador de tendências', active: true },
-  { id: 5, name: 'KRYOS', type: 'Expert Advisor', description: 'Robô multifuncional', active: true },
-  { id: 6, name: 'IRON', type: 'Expert Advisor', description: 'Robô para forex', active: true },
-  { id: 7, name: 'OMEGABOT', type: 'Expert Advisor', description: 'Robô completo', active: true },
-  { id: 8, name: 'DASHBOT', type: 'Dashboard', description: 'Painel de controle', active: true }
+// ─── CONFIGURAÇÃO ───────────────────────────────────────────────
+const CONFIG = {
+  proxyUrl:  "https://dashbot.investidorbot.com",
+  authToken: "dashbot2024",
+  pollMs:    10000,
+};
+
+// ─── AUTH STATE ──────────────────────────────────────────────────
+var authState = {
+  sessionToken: localStorage.getItem('dashbot_session')||null,
+  account:      localStorage.getItem('dashbot_account')||null,
+  plan:         localStorage.getItem('dashbot_plan')||null,
+};
+
+// Parâmetros de URL (primeiro acesso via MT5)
+var urlParams = new URLSearchParams(window.location.search);
+var setupTokenURL = urlParams.get('setup');
+var accountURL    = urlParams.get('account');
+
+// ─── TELA DE LOGIN / CADASTRO ────────────────────────────────────
+function showLoginScreen(opts) {
+  opts = opts||{};
+  document.getElementById('app').style.display = 'none';
+  var screen = document.getElementById('authScreen');
+  if(!screen) {
+    screen = document.createElement('div');
+    screen.id = 'authScreen';
+    screen.style.cssText = 'position:fixed;inset:0;background:#08080f;display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px';
+    document.body.appendChild(screen);
+  }
+  var isSetup = (opts.mode==='setup') || !!opts.setupToken;
+  var preAccount = opts.account || accountURL || '';
+  var logoEl = document.querySelector('img[alt="iBot"]');
+  var logoB64 = logoEl ? logoEl.src : '';
+  screen.innerHTML = '<div style="background:#0f1120;border:1px solid #1e2438;border-radius:16px;padding:32px;max-width:380px;width:100%;text-align:center">' +
+    '<div style="width:64px;height:64px;margin:0 auto 16px;background:#0d1f3c;border-radius:12px;display:flex;align-items:center;justify-content:center">' +
+    (logoB64?'<img src="'+logoB64+'" style="width:48px;height:48px;object-fit:contain;filter:brightness(0) invert(1)">':'<span style="font-size:32px">🤖</span>')+'</div>'+
+    '<h2 style="color:#e8ecf4;font-size:20px;margin-bottom:4px">Dashbot</h2>'+
+    '<p style="color:#64748b;font-size:13px;margin-bottom:24px">'+(isSetup?'Crie sua senha de acesso':'Acesse seu dashboard')+'</p>'+
+    (opts.msg?'<div id="authMsg" style="background:#2d1117;border:1px solid #ef4444;color:#ef4444;padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:14px">'+opts.msg+'</div>':'')+
+    '<div style="text-align:left;margin-bottom:12px">'+
+    '<label style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px">Conta MT5</label>'+
+    '<input id="authAccount" type="number" placeholder="Número da sua conta" value="'+preAccount+'" '+(isSetup?'readonly ':'')+
+    'style="width:100%;background:#08080f;border:1px solid #1e2438;color:#e8ecf4;padding:10px 12px;border-radius:8px;font-size:14px;'+(isSetup?'opacity:.7':'')+'">'+ 
+    '</div>'+
+    (isSetup?
+      '<div style="text-align:left;margin-bottom:12px">'+
+      '<label style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px">Criar senha</label>'+
+      '<input id="authPw" type="password" placeholder="Mínimo 6 caracteres" style="width:100%;background:#08080f;border:1px solid #1e2438;color:#e8ecf4;padding:10px 12px;border-radius:8px;font-size:14px">'+
+      '</div>'+
+      '<div style="text-align:left;margin-bottom:20px">'+
+      '<label style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px">Confirmar senha</label>'+
+      '<input id="authPw2" type="password" placeholder="Repita a senha" style="width:100%;background:#08080f;border:1px solid #1e2438;color:#e8ecf4;padding:10px 12px;border-radius:8px;font-size:14px">'+
+      '</div>'+
+      '<button onclick="doSetupPassword(\''+opts.setupToken+'\')" style="width:100%;background:#2563eb;color:#fff;border:none;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Criar senha e entrar</button>'
+    :
+      '<div style="text-align:left;margin-bottom:12px">'+
+      '<label style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px">Senha</label>'+
+      '<input id="authPw" type="password" placeholder="Sua senha" style="width:100%;background:#08080f;border:1px solid #1e2438;color:#e8ecf4;padding:10px 12px;border-radius:8px;font-size:14px">'+
+      '</div>'+
+      '<button onclick="doLogin()" style="width:100%;background:#2563eb;color:#fff;border:none;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Entrar</button>'
+    )+
+    '<p style="color:#64748b;font-size:11px;margin-top:16px">Primeiro acesso? Use o botão<br><strong style="color:#3b82f6">[Acessar Dashbot Web]</strong> no MetaTrader 5</p>'+
+    '</div>';
+}
+
+function doLogin() {
+  var account = document.getElementById('authAccount').value;
+  var password = document.getElementById('authPw').value;
+  if(!account||!password){ showLoginScreen({msg:'Preencha todos os campos'}); return; }
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', CONFIG.proxyUrl+'/auth/login', true);
+  xhr.setRequestHeader('Content-Type','application/json');
+  xhr.onload = function() {
+    try {
+      var r = JSON.parse(xhr.responseText);
+      if(r.ok) {
+        authState.sessionToken = r.sessionToken;
+        authState.account      = r.account;
+        authState.plan         = r.plan;
+        localStorage.setItem('dashbot_session', r.sessionToken);
+        localStorage.setItem('dashbot_account', r.account);
+        localStorage.setItem('dashbot_plan',    r.plan);
+        hideAuthScreen();
+        startDashboard();
+      } else {
+        showLoginScreen({msg: r.error||'Conta ou senha incorretos'});
+      }
+    } catch(e){ showLoginScreen({msg:'Erro de conexão'}); }
+  };
+  xhr.onerror = function(){ showLoginScreen({msg:'Sem conexão com o servidor'}); };
+  xhr.send(JSON.stringify({account:account, password:password}));
+}
+
+function doSetupPassword(setupToken) {
+  var account = document.getElementById('authAccount').value;
+  var pw  = document.getElementById('authPw').value;
+  var pw2 = document.getElementById('authPw2').value;
+  if(!pw||pw.length<6){ showLoginScreen({setupToken:setupToken,msg:'Senha muito curta (mínimo 6 caracteres)'}); return; }
+  if(pw!==pw2){ showLoginScreen({setupToken:setupToken,msg:'As senhas não conferem'}); return; }
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', CONFIG.proxyUrl+'/auth/setup-password', true);
+  xhr.setRequestHeader('Content-Type','application/json');
+  xhr.onload = function() {
+    try {
+      var r = JSON.parse(xhr.responseText);
+      if(r.ok) {
+        authState.sessionToken = r.sessionToken;
+        authState.account      = r.account;
+        authState.plan         = r.plan;
+        localStorage.setItem('dashbot_session', r.sessionToken);
+        localStorage.setItem('dashbot_account', r.account);
+        localStorage.setItem('dashbot_plan',    r.plan);
+        // Limpa URL
+        window.history.replaceState({},document.title,window.location.pathname);
+        hideAuthScreen();
+        startDashboard();
+      } else {
+        showLoginScreen({setupToken:setupToken,msg:r.error||'Erro ao criar senha'});
+      }
+    } catch(e){ showLoginScreen({setupToken:setupToken,msg:'Erro de conexão'}); }
+  };
+  xhr.onerror = function(){ showLoginScreen({setupToken:setupToken,msg:'Sem conexão'}); };
+  xhr.send(JSON.stringify({setupToken:setupToken, password:pw}));
+}
+
+function hideAuthScreen() {
+  var s = document.getElementById('authScreen');
+  if(s) s.remove();
+  document.getElementById('app').style.display = 'flex';
+}
+
+function logout() {
+  localStorage.removeItem('dashbot_session');
+  localStorage.removeItem('dashbot_account');
+  localStorage.removeItem('dashbot_plan');
+  authState = {sessionToken:null,account:null,plan:null};
+  showLoginScreen();
+}
+
+function startDashboard() {
+  fetchData();
+  setInterval(fetchData, CONFIG.pollMs);
+}
+
+// ─── INICIALIZAÇÃO ────────────────────────────────────────────────
+(function init() {
+  // CASO 1: Tem setupToken na URL → tela de cadastro imediata
+  if(setupTokenURL && accountURL) {
+    showLoginScreen({mode:'setup', setupToken:setupTokenURL, account:accountURL});
+    return;
+  }
+
+  // CASO 2: Tem account na URL (veio do MT5) → verifica se já tem senha
+  if(accountURL) {
+    // Se tem sessão válida para essa conta, entra direto
+    if(authState.sessionToken && authState.account===accountURL) {
+      var xhr0 = new XMLHttpRequest();
+      xhr0.open('GET', CONFIG.proxyUrl+'/auth/verify?token='+authState.sessionToken, true);
+      xhr0.timeout = 5000;
+      xhr0.onload = function() {
+        try {
+          var r = JSON.parse(xhr0.responseText);
+          if(r.ok){ authState.plan=r.plan; hideAuthScreen(); startDashboard(); return; }
+        } catch(e){}
+        checkAccountAndShow(accountURL);
+      };
+      xhr0.onerror = function(){ checkAccountAndShow(accountURL); };
+      xhr0.ontimeout = function(){ checkAccountAndShow(accountURL); };
+      xhr0.send();
+    } else {
+      checkAccountAndShow(accountURL);
+    }
+    return;
+  }
+
+  // CASO 3: Tem sessão salva (sem account na URL)
+  if(authState.sessionToken) {
+    var xhr2 = new XMLHttpRequest();
+    xhr2.open('GET', CONFIG.proxyUrl+'/auth/verify?token='+authState.sessionToken, true);
+    xhr2.timeout = 8000;
+    xhr2.onload = function() {
+      try {
+        var r = JSON.parse(xhr2.responseText);
+        if(r.ok){ authState.plan=r.plan; hideAuthScreen(); startDashboard(); return; }
+      } catch(e){}
+      showLoginScreen({mode:'login', msg:'Sessão expirada. Faça login novamente.'});
+    };
+    xhr2.onerror = function(){ showLoginScreen({mode:'login'}); };
+    xhr2.ontimeout = function(){ showLoginScreen({mode:'login'}); };
+    xhr2.send();
+    return;
+  }
+
+  // CASO 4: Acesso direto → tela de login
+  showLoginScreen({mode:'login'});
+})();
+
+// Verifica se conta tem senha e mostra tela correta
+function checkAccountAndShow(account) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', CONFIG.proxyUrl+'/auth/check?account='+account, true);
+  xhr.timeout = 8000;
+  xhr.onload = function() {
+    try {
+      var r = JSON.parse(xhr.responseText);
+      if(r.hasPassword) {
+        // Já cadastrou senha → tela de login com conta preenchida
+        showLoginScreen({mode:'login', account:account});
+      } else if(r.setupToken) {
+        // Sem senha → tela de CADASTRO com setupToken
+        showLoginScreen({mode:'setup', setupToken:r.setupToken, account:account});
+      } else {
+        showLoginScreen({mode:'login', account:account,
+          msg:'Use o botão [Acessar Dashbot Web] no MetaTrader 5 para ativar.'});
+      }
+    } catch(e){
+      showLoginScreen({mode:'login', account:account});
+    }
+  };
+  xhr.onerror = function(){ showLoginScreen({mode:'login', account:account}); };
+  xhr.ontimeout = function(){ showLoginScreen({mode:'login', account:account}); };
+  xhr.send();
+}
+
+// Filtro de período ativo
+var activePeriod = 'all';
+var state = {
+  data: null, isPremium: false, chart: null,
+  visibleEAs: {}, metaDia: 0, stopDia: 0,
+  metaAtingida: false, stopAtingido: false,
+  customFrom: null, customTo: null,
+};
+const PERIODS = { '7d':7, '1m':30, '3m':90, '1a':365, 'all':null };
+
+function applyDateRange() {
+  var f = document.getElementById('dateFrom');
+  var t = document.getElementById('dateTo');
+  if(!f||!t) return;
+  state.customFrom = f.value || null;
+  state.customTo   = t.value || null;
+  document.querySelectorAll('.pf-btn').forEach(b=>b.classList.remove('active'));
+  activePeriod = null;
+  if(state.data) initChart(state.data);
+}
+
+const EA_COLORS = [
+  '#2dd46a','#288cff','#ff8c00','#b43fff','#e03333',
+  '#00ccaa','#f0c800','#ff4d99','#4a9fff','#ff7a1a'
 ];
 
-function showMsg(id, msg, ok) {
-  const el = document.getElementById(id);
-  el.textContent = msg; 
-  el.className = 'msg ' + (ok ? 'ok' : 'err'); 
+// ─── FETCH ───────────────────────────────────────────────────────
+var _offlineCount = 0;
+var _lastDataTs   = 0;
+var _OFFLINE_THRESHOLD = 3;    // falhas consecutivas
+var _OFFLINE_TIMEOUT_MS = 60000; // 60s sem dados válidos
+
+function fetchData() {
+  var tok = authState.sessionToken || CONFIG.authToken;
+  var url = CONFIG.proxyUrl + '/data?token=' + tok;
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', url, true);
+  xhr.timeout = 10000;
+  xhr.onload = function() {
+    if (xhr.status >= 200 && xhr.status < 300) {
+      try {
+        var d = JSON.parse(xhr.responseText);
+        if(d.offline) {
+          _offlineCount++;
+          // Só mostra offline após 3 falhas consecutivas OU 60s sem dados
+          var timeSinceLast = _lastDataTs ? (Date.now() - _lastDataTs) : 9999999;
+          if(_offlineCount >= _OFFLINE_THRESHOLD || timeSinceLast > _OFFLINE_TIMEOUT_MS) {
+            showOfflineMessage(d.msg||'MT5 desconectado. Abra o Dashbot no MetaTrader 5.');
+          }
+          // Mantém último render visível
+          return;
+        }
+        // Dados válidos recebidos
+        _offlineCount = 0;
+        _lastDataTs = Date.now();
+        hideOfflineMessage();
+        state.data = d;
+        state.isPremium = d.premium === true;
+        updateStatus(true, d.ts);
+        render();
+      } catch(e) { updateStatus(false, null); }
+    } else if(xhr.status === 401) {
+      logout();
+    } else {
+      _offlineCount++;
+      updateStatus(false, null);
+    }
+  };
+  xhr.onerror   = function() { _offlineCount++; updateStatus(false, null); };
+  xhr.ontimeout = function() { _offlineCount++; updateStatus(false, null); };
+  xhr.send();
+}
+
+function showOfflineMessage(msg) {
+  var el = document.getElementById('offlineMsg');
+  if(!el) {
+    el = document.createElement('div');
+    el.id = 'offlineMsg';
+    el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);'+
+      'background:#0f1120;border:1px solid #1e2438;border-radius:16px;padding:40px;'+
+      'text-align:center;color:#e8ecf4;z-index:999;max-width:380px;width:90%';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = '<div style="font-size:40px;margin-bottom:16px">📡</div>'+
+    '<h3 style="color:#e8ecf4;margin-bottom:8px">MT5 Desconectado</h3>'+
+    '<p style="color:#64748b;font-size:13px;margin-bottom:20px">'+msg+'</p>'+
+    '<p style="color:#3b82f6;font-size:12px">Tentando reconectar...</p>';
   el.style.display = 'block';
-  setTimeout(() => el.style.display = 'none', 4000);
+  var appEl = document.getElementById('app');
+  if(appEl) appEl.style.filter = 'blur(4px)';
 }
 
-function openAddUserModal() {
-  document.getElementById('userModalTitle').textContent = '➕ Adicionar Usuário';
-  document.getElementById('userModalButton').textContent = 'Adicionar Usuário';
-  document.getElementById('uId').value = '';
-  document.getElementById('uName').value = '';
-  document.getElementById('uEmail').value = '';
-  document.getElementById('uPhone').value = '';
-
-  // Gera o HTML da linha de produto com opções já embutidas
-  const products = getProducts();
-  const opts = products.filter(p => p.active).map(p =>
-    `<option value="${p.id}">${p.name}</option>`
-  ).join('');
-  document.getElementById('productsContainer').innerHTML = `
-    <div class="product-account-row">
-      <div class="fg" style="flex:2"><label>Produto</label>
-        <select class="user-product" style="width:100%">
-          <option value="">Selecione...</option>${opts}
-        </select>
-      </div>
-      <div class="fg" style="flex:1"><label>Conta MT5</label>
-        <input type="number" class="user-account" placeholder="12345678">
-      </div>
-      <div class="fg" style="width:90px"><label>Tipo</label>
-        <select class="user-account-type">
-          <option value="demo">Demo</option>
-          <option value="real">Real</option>
-        </select>
-      </div>
-      <div class="fg" style="width:80px"><label>Lote Mín</label>
-        <input type="number" class="user-minlots" placeholder="0.01" step="0.01" min="0">
-      </div>
-      <div class="fg" style="width:80px"><label>Lote Máx</label>
-        <input type="number" class="user-maxlots" placeholder="1.00" step="0.01" min="0">
-      </div>
-      <div class="fg" style="width:75px"><label>Instâncias</label>
-        <input type="number" class="user-instances" placeholder="1" min="1" value="1">
-      </div>
-      <div class="fg" style="flex:1"><label>Expiração</label>
-        <input type="date" class="product-expiry" style="width:100%">
-      </div>
-      <button class="remove-product" onclick="removeProduct(this)">×</button>
-    </div>`;
-
-  const defaultDate = new Date();
-  defaultDate.setDate(defaultDate.getDate() + 30);
-  document.querySelectorAll('#productsContainer .product-expiry').forEach(input => {
-    input.value = defaultDate.toISOString().split('T')[0];
-  });
-  document.getElementById('userModal').style.display = 'block';
+function hideOfflineMessage() {
+  var el = document.getElementById('offlineMsg');
+  if(el) el.style.display = 'none';
+  var appEl = document.getElementById('app');
+  if(appEl) appEl.style.filter = '';
 }
 
-function openEditUserModal(userId) {
-  const users = getUsers();
-  const licenses = getLicenses();
-  const user = users.find(u => u.id === userId);
-  const userLicenses = licenses.filter(l => l.userId === userId);
-  if (!user) return;
-  document.getElementById('userModalTitle').textContent = '✏️ Editar Usuário';
-  document.getElementById('userModalButton').textContent = 'Salvar Alterações';
-  document.getElementById('uId').value = user.id;
-  document.getElementById('uName').value = user.name || '';
-  document.getElementById('uEmail').value = user.email || '';
-  document.getElementById('uPhone').value = user.phone || '';
+function sendCommand(cmd, magic) {
+  if (!state.isPremium) return;
+  magic = magic || 0;
+  var url = CONFIG.proxyUrl + '/command?token=' + CONFIG.authToken;
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', url, true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.onload = function() { setTimeout(fetchData, 3000); };
+  xhr.onerror = function() {};
+  xhr.send(JSON.stringify({ cmd: cmd, magic: magic, ts: Date.now() }));
+}
 
-  const productsContainer = document.getElementById('productsContainer');
-  productsContainer.innerHTML = '';
-
-  if (userLicenses.length === 0) {
-    addProductField();
+function updateStatus(ok, ts) {
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusTxt');
+  if (ok) {
+    dot.style.background = 'var(--green)';
+    dot.style.boxShadow  = '0 0 8px var(--green)';
+    const ago = ts ? Math.round((Date.now()/1000 - ts)) : 0;
+    let agoStr = '';
+    if (ago < 60)       agoStr = `${ago}s atrás`;
+    else if (ago < 3600) agoStr = `${Math.floor(ago/60)}min atrás`;
+    else                 agoStr = `${Math.floor(ago/3600)}h atrás`;
+    txt.textContent = `Atualizado ${agoStr}`;
   } else {
-    userLicenses.forEach(license => {
-      addProductField(license);
+    dot.style.background = 'var(--red)';
+    dot.style.boxShadow  = '0 0 8px var(--red)';
+    txt.textContent = 'Sem conexão';
+  }
+}
+
+// ─── RENDER ──────────────────────────────────────────────────────
+function render() {
+  const d = state.data;
+  if (!d || !d.eas) return;
+
+  document.getElementById('badgePlan').textContent = d.plan || 'FREE';
+
+  d.eas.forEach((ea, i) => {
+    if (state.visibleEAs[ea.magic] === undefined)
+      state.visibleEAs[ea.magic] = true;
+  });
+
+  checkDailyLimits(d);
+
+  const main = document.getElementById('main');
+  main.innerHTML = '';
+
+  // 1. Stats bar
+  main.appendChild(buildStatsBar(d));
+
+  // 2. Gráfico — ACIMA dos cards
+  main.appendChild(buildChart(d));
+
+  // 3. Painel global + cards — ABAIXO do gráfico
+  const gc = document.createElement('div');
+  gc.className = 'global-cards';
+  gc.appendChild(buildGlobalPanel(d));
+  const right = document.createElement('div');
+  right.style.display = 'flex';
+  right.style.flexDirection = 'column';
+  right.style.gap = '8px';
+  right.appendChild(buildEAGrid(d));
+  gc.appendChild(right);
+  main.appendChild(gc);
+}
+
+// ─── STATS BAR ───────────────────────────────────────────────────
+function buildStatsBar(d) {
+  let eas = d.eas.filter(ea => state.visibleEAs[ea.magic] !== false);
+  if (eas.length === 0) eas = d.eas;
+
+  // Determina campos de acordo com o período ativo
+  // '7d','1m' → semana/mês; 'all' → total
+  function periodFields(ea) {
+    const p = activePeriod;
+    if (p === '7d')      return { profit: ea.profitWeek||0, trades: ea.tradesWeek||0, wins: ea.winsWeek||0 };
+    if (p === '1m' || p === '3m') return { profit: ea.profitMonth||0, trades: ea.tradesMonth||0, wins: ea.winsMonth||0 };
+    return { profit: ea.profitTotal||0, trades: ea.totalTrades||0, wins: ea.totalWins||0 };
+  }
+
+  let totTrades=0, totWins=0, totalProfit=0, maxDD=0;
+  let grossProfit=0, grossLoss=0;
+  eas.forEach(ea => {
+    const f = periodFields(ea);
+    totTrades   += f.trades;
+    totWins     += f.wins;
+    totalProfit += f.profit;
+    // Estima PF pelo ratio de vitórias/perdas do período
+    const pf = ea.profitFactor||0;
+    if (pf > 0 && f.profit > 0) { grossProfit += f.profit; grossLoss += f.profit/pf; }
+    else if (f.profit < 0)      { grossLoss += Math.abs(f.profit); }
+    if ((ea.equityDD||0) > maxDD) maxDD = ea.equityDD;
+  });
+
+  let pf, rf, wr, dd;
+  if (eas.length === 1) {
+    const f = periodFields(eas[0]);
+    pf = (eas[0].profitFactor||0).toFixed(2);
+    rf = (eas[0].recoveryFactor||0).toFixed(2);
+    wr = f.trades ? (f.wins/f.trades*100).toFixed(1) : '0';
+    dd = (eas[0].equityDD||0).toFixed(1);
+  } else {
+    pf = (grossLoss > 0 ? grossProfit/grossLoss : 0).toFixed(2);
+    rf = maxDD > 0 ? (totalProfit/maxDD).toFixed(2) : '0';
+    wr = totTrades ? (totWins/totTrades*100).toFixed(1) : '0';
+    dd = maxDD.toFixed(1);
+  }
+
+  const bar = el('div','stats-bar');
+  bar.appendChild(statItem('FATOR DE LUCRO', pf, '', 'var(--blue)'));
+  bar.appendChild(statItem('FATOR RECUPERAÇÃO', rf, '', 'var(--txt)'));
+  bar.appendChild(statItem('TOTAL OPERAÇÕES', totTrades, '', 'var(--txt)'));
+  bar.appendChild(statItem('TOTAL VITÓRIAS', totWins, '', 'var(--green)'));
+
+  // Roscas
+  const donuts = el('div','donuts');
+  donuts.appendChild(buildDonut('Taxa de Acerto', parseFloat(wr), 100-parseFloat(wr), 'var(--blue)', 'var(--red)', 'Acertos', 'Erros', wr+'%'));
+  donuts.appendChild(buildDonut('Equity DD', 100-parseFloat(dd), parseFloat(dd), 'var(--blue)', 'var(--red)', 'Capital', 'DD', dd+'%'));
+  bar.appendChild(donuts);
+  return bar;
+}
+
+function statItem(label, value, sub, color) {
+  const d = el('div','stat-item');
+  d.innerHTML = `<span class="stat-label">${label}</span>
+    <span class="stat-value" style="color:${color}">${value}</span>
+    ${sub?`<span class="stat-sub">${sub}</span>`:''}`;
+  return d;
+}
+
+function buildDonut(title, pct1, pct2, c1, c2, l1, l2, centerText) {
+  const wrap = el('div','donut-wrap');
+  wrap.innerHTML = `<span class="donut-label-top">${title}</span>`;
+  const cw = el('div','donut-canvas-wrap');
+  const canvas = document.createElement('canvas');
+  canvas.width = 80; canvas.height = 80;
+  const center = el('div','donut-center'); center.textContent = centerText;
+  cw.appendChild(canvas); cw.appendChild(center);
+  const legend = el('div','donut-legend');
+  legend.innerHTML = `<span class="leg-blue">${l1}</span><span class="leg-red">${l2}</span>`;
+  wrap.appendChild(cw); wrap.appendChild(legend);
+
+  // Desenha a rosca
+  setTimeout(() => {
+    const ctx = canvas.getContext('2d');
+    const total = pct1 + pct2 || 1;
+    const a1 = (pct1/total)*Math.PI*2 - Math.PI/2;
+    const colors = [getComputedColor(c1), getComputedColor(c2)];
+    const data = [pct1, pct2];
+    let start = -Math.PI/2;
+    data.forEach((v,i) => {
+      const end = start + (v/total)*Math.PI*2;
+      ctx.beginPath();
+      ctx.moveTo(40,40);
+      ctx.arc(40,40,36,start,end);
+      ctx.closePath();
+      ctx.fillStyle = colors[i];
+      ctx.fill();
+      start = end;
+    });
+    // Furo interno
+    ctx.beginPath(); ctx.arc(40,40,24,0,Math.PI*2);
+    ctx.fillStyle = getComputedColor('var(--bg2)') || '#0d0f1a';
+    ctx.fill();
+  }, 50);
+  return wrap;
+}
+
+function getComputedColor(v) {
+  if (v.startsWith('var(')) {
+    const name = v.slice(4,-1);
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+  return v;
+}
+
+// ─── PAINEL GLOBAL ───────────────────────────────────────────────
+function buildGlobalPanel(d) {
+  const panel = el('div','global-panel');
+  const isPremium = state.isPremium;
+  const eas = d.eas;
+  const tot = {
+    open:  eas.reduce((s,e)=>s+e.profitOpen,0),
+    day:   eas.reduce((s,e)=>s+e.profitDay,0),
+    week:  eas.reduce((s,e)=>s+e.profitWeek,0),
+    month: eas.reduce((s,e)=>s+e.profitMonth,0),
+    total: eas.reduce((s,e)=>s+e.profitTotal,0),
+    dd:    eas.reduce((s,e)=>s+e.maxDrawdown,0),
+    ddPct: eas.reduce((s,e)=>s+e.maxDrawdownPct,0) / (eas.length||1),
+    cap:   eas.reduce((s,e)=>s+e.initialCapital,0),
+  };
+  const rent = tot.cap > 0 ? (tot.total/tot.cap*100) : 0;
+
+  // Alerta meta/stop
+  const alertEl = el('div','alert-banner');
+  alertEl.id = 'alertBanner';
+  if (state.metaAtingida) { alertEl.className='alert-banner meta'; alertEl.style.display='block'; alertEl.textContent='✓ META DIÁRIA ATINGIDA'; }
+  if (state.stopAtingido) { alertEl.className='alert-banner stop'; alertEl.style.display='block'; alertEl.textContent='✕ STOP DIÁRIO ATINGIDO'; }
+  panel.appendChild(alertEl);
+
+  panel.innerHTML += `
+    <div class="gp-title">PAINEL GLOBAL</div>
+    <div class="gp-sub">Consolidado de todos os robôs</div>
+    <hr class="gp-sep">
+    ${metricRow('OP. ABERTA', tot.open, true)}
+    <hr class="gp-sep">
+    ${metricRow('DIA',   tot.day)}
+    ${metricRow('SEMANA',tot.week)}
+    ${metricRow('MÊS',   tot.month)}
+    ${metricRow('TOTAL', tot.total)}
+    <hr class="gp-sep">
+    ${metricRowRed('DRAWDOWN MAX', '-'+fmt(Math.abs(tot.dd))+' ('+tot.ddPct.toFixed(1)+'%)')}
+    <div class="rent-big" style="color:${rent>=0?'var(--green)':'var(--red)'}">${rent>=0?'+':''}${rent.toFixed(2)}%</div>
+    <hr class="gp-sep">
+  `;
+  panel.appendChild(alertEl); // move para o topo
+
+  // Meta/Stop — só Premium pode editar
+  const ms = el('div','meta-stop');
+  if (isPremium) {
+    ms.innerHTML = `
+      <div class="ms-label">Meta / Stop Diário</div>
+      <input class="ms-input" id="metaInput" type="number" min="0" placeholder="Meta diária ($)" value="${state.metaDia||''}">
+      <input class="ms-input stop" id="stopInput" type="number" min="0" placeholder="Stop diário ($)" value="${state.stopDia||''}">
+      <button class="btn-apply" id="btnApply">Aplicar</button>
+    `;
+  } else {
+    ms.innerHTML = `
+      <div class="ms-label" style="color:var(--muted)">Meta / Stop Diário <span style="font-size:10px;color:var(--blue)">🔒 Premium</span></div>
+    `;
+  }
+  panel.appendChild(ms);
+
+  // Barra de progresso
+  if (isPremium && (state.metaDia > 0 || state.stopDia > 0)) {
+    const ref = state.metaDia > 0 ? state.metaDia : state.stopDia;
+    const val = state.metaDia > 0 ? tot.day : -tot.day;
+    const pct = Math.min(100, Math.max(0, val/ref*100));
+    const isStop = state.stopDia > 0 && tot.day < 0;
+    const pbWrap = el('div','progress-bar-wrap');
+    pbWrap.innerHTML = `
+      <div class="progress-label">
+        <span>$ ${tot.day.toFixed(2)}</span>
+        <span>${pct.toFixed(0)}%</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:${pct}%;background:${isStop?'var(--red)':'var(--green)'}"></div>
+      </div>
+    `;
+    panel.appendChild(pbWrap);
+  }
+
+  // Botões globais — desabilitados para Free
+  const anyRunning = d.eas.some(function(e){ return e.isRunning; });
+  const anyPaused  = d.eas.some(function(e){ return e.isPaused; });
+  const btnsWrap = el('div', isPremium?'global-btns':'global-btns free-lock');
+
+  const btnLigar = document.createElement('button');
+  btnLigar.className = 'btn-g ' + (anyRunning?'fechar':'ligar');
+  btnLigar.disabled = !isPremium;
+  btnLigar.textContent = anyRunning ? 'DESLIGAR' : 'LIGAR';
+  if (isPremium) btnLigar.addEventListener('click', function(){ sendCommand(anyRunning?'desligar':'ligar', 0); });
+
+  const btnPausar = document.createElement('button');
+  btnPausar.className = 'btn-g pausar';
+  btnPausar.disabled = !isPremium;
+  btnPausar.textContent = anyPaused ? 'RETOMAR' : 'PAUSAR';
+  if (isPremium) btnPausar.addEventListener('click', function(){ sendCommand(anyPaused?'retomar':'pausar', 0); });
+
+  const btnFechar = document.createElement('button');
+  btnFechar.className = 'btn-g fechar';
+  btnFechar.disabled = !isPremium;
+  btnFechar.textContent = 'FECHAR';
+  if (isPremium) btnFechar.addEventListener('click', function(){ sendCommand('fechar', 0); });
+
+  btnsWrap.appendChild(btnLigar);
+  btnsWrap.appendChild(btnPausar);
+  btnsWrap.appendChild(btnFechar);
+  const btns = btnsWrap;
+  panel.appendChild(btns);
+
+  if (!isPremium) {
+    const ov = el('div','readonly-overlay');
+    ov.style.position='relative'; ov.style.marginTop='8px';
+    ov.innerHTML = '<div class="readonly-msg"><strong>🔒 Modo Free</strong>Apenas visualização.<br>Upgrade para controle total.</div>';
+    // Não bloqueia tudo, só mostra aviso nos botões
+  }
+
+  // Eventos meta/stop
+  setTimeout(() => {
+    const btnAp = document.getElementById('btnApply');
+    if (btnAp) btnAp.addEventListener('click', () => {
+      state.metaDia = parseFloat(document.getElementById('metaInput').value)||0;
+      state.stopDia = parseFloat(document.getElementById('stopInput').value)||0;
+      state.metaAtingida = false;
+      state.stopAtingido = false;
+      render();
+    });
+  }, 50);
+
+  return panel;
+}
+
+function metricRow(label, val, isOpen=false) {
+  const c = val > 0 ? 'var(--green)' : val < 0 ? 'var(--red)' : 'var(--muted)';
+  const prefix = val >= 0 ? '+' : '-';
+  return `<div class="metric-row">
+    <span class="mlbl">${label}</span>
+    <span class="mval" style="color:${c}">${prefix}${fmt(Math.abs(val))}</span>
+  </div>`;
+}
+
+function metricRowRed(label, val) {
+  return `<div class="metric-row">
+    <span class="mlbl">${label}</span>
+    <span class="mval" style="color:var(--red)">${val}</span>
+  </div>`;
+}
+
+// ─── EA GRID ─────────────────────────────────────────────────────
+function buildEAGrid(d) {
+  const grid = el('div','ea-grid');
+  d.eas.forEach((ea, idx) => grid.appendChild(buildEACard(ea, idx, d.premium)));
+  return grid;
+}
+
+function buildEACard(ea, idx, isPremium) {
+  const c = EA_COLORS[idx % EA_COLORS.length];
+  const card = el('div','ea-card');
+  card.style.borderColor = c+'44';
+  card.querySelector ? null : null;
+
+  // Barra topo colorida
+  const bar = document.createElement('div');
+  bar.style.cssText = `position:absolute;top:0;left:0;right:0;height:3px;background:${c}`;
+  card.appendChild(bar);
+
+  const nm = ea.name || ('Magic#'+ea.magic);
+  const rent = ea.rentability||0;
+  const rc = rent>=0?'var(--green)':'var(--red)';
+
+  card.innerHTML += `
+    <div class="ea-card-header">
+      <div class="ea-avatar" style="background:${c}22;color:${c};border-color:${c}44">${nm[0].toUpperCase()}</div>
+      <div class="ea-name-wrap">
+        <div class="ea-name" style="color:${c}">${nm}</div>
+        <div class="ea-id">#${ea.magic}</div>
+      </div>
+    </div>
+    <div class="ea-badges">
+      <span class="badge ${ea.isRunning?'ativo':'inativo'}">${ea.isRunning?'● ATIVO':'● INATIVO'}</span>
+      ${ea.isPaused?'<span class="badge pausado">PAUSADO</span>':''}
+    </div>
+    <div class="ea-metrics">
+      ${emRow('Op. Aberta', ea.profitOpen, true)}
+      <div class="em-sep"></div>
+      ${emRow('Dia',    ea.profitDay)}
+      ${emRow('Semana', ea.profitWeek)}
+      ${emRow('Mês',    ea.profitMonth)}
+      ${emRow('Total',  ea.profitTotal)}
+      <div class="em-sep"></div>
+      <div class="em-row"><span class="em-lbl">DD Max</span><span class="em-val" style="color:var(--red)">-${fmt(ea.maxDrawdown)} (${(ea.maxDrawdownPct||0).toFixed(1)}%)</span></div>
+    </div>
+    <div class="ea-rent" style="color:${rc}">${rent>=0?'+':''}${rent.toFixed(2)}%</div>
+    <div class="${isPremium?'ea-btns':'ea-btns free-lock'}">
+      <button class="btn-ea ${ea.isRunning?'fechar':'ligar'}" ${isPremium?'':'disabled'}
+        data-cmd="${ea.isRunning?'desligar':'ligar'}" data-magic="${ea.magic}">
+        ${ea.isRunning?'DESLIGAR':'LIGAR'}
+      </button>
+      <button class="btn-ea pausar" ${isPremium?'':'disabled'}
+        data-cmd="${ea.isPaused?'retomar':'pausar'}" data-magic="${ea.magic}">
+        ${ea.isPaused?'RETOMAR':'PAUSAR'}
+      </button>
+      <button class="btn-ea fechar" ${isPremium?'':'disabled'}
+        data-cmd="fechar" data-magic="${ea.magic}">FECHAR</button>
+    </div>
+  `;
+  // addEventListener — necessário para iOS Safari (onclick inline quebra)
+  if (isPremium) {
+    card.querySelectorAll('[data-cmd]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        sendCommand(btn.getAttribute('data-cmd'), parseInt(btn.getAttribute('data-magic'), 10));
+      });
     });
   }
-  document.getElementById('userModal').style.display = 'block';
+  return card;
 }
 
-function closeUserModal() { document.getElementById('userModal').style.display = 'none'; }
-
-function addProductField(data) {
-  data = data || {};
-  const container = document.getElementById('productsContainer');
-  const newProduct = document.createElement('div');
-  newProduct.className = 'product-account-row';
-  const products = getProducts();
-  const opts = products.filter(p => p.active).map(p =>
-    `<option value="${p.id}" ${p.id == data.productId ? 'selected' : ''}>${p.name}</option>`
-  ).join('');
-  const d = new Date(); d.setDate(d.getDate()+30);
-  const defDate = d.toISOString().split('T')[0];
-  newProduct.innerHTML = `
-    <div class="fg" style="flex:2"><label>Produto</label>
-      <select class="user-product" style="width:100%">
-        <option value="">Selecione...</option>${opts}
-      </select>
-    </div>
-    <div class="fg" style="flex:1"><label>Conta MT5</label>
-      <input type="number" class="user-account" placeholder="12345678" value="${data.account||''}">
-    </div>
-    <div class="fg" style="width:80px"><label>Tipo</label>
-      <select class="user-account-type">
-        <option value="demo" ${(data.accountType||'demo')==='demo'?'selected':''}>Demo</option>
-        <option value="real" ${data.accountType==='real'?'selected':''}>Real</option>
-      </select>
-    </div>
-    <div class="fg" style="width:72px"><label>Lote Mín</label>
-      <input type="number" class="user-minlots" placeholder="0.01" step="0.01" min="0" value="${data.minLots||''}">
-    </div>
-    <div class="fg" style="width:72px"><label>Lote Máx</label>
-      <input type="number" class="user-maxlots" placeholder="1.00" step="0.01" min="0" value="${data.maxLots||''}">
-    </div>
-    <div class="fg" style="width:70px"><label>Instâncias</label>
-      <input type="number" class="user-instances" placeholder="1" min="1" value="${data.instances||1}">
-    </div>
-    <div class="fg" style="flex:1"><label>Expiração</label>
-      <input type="date" class="product-expiry" style="width:100%" value="${data.expiry||defDate}">
-    </div>
-    <button class="remove-product" onclick="removeProduct(this)">×</button>`;
-  container.appendChild(newProduct);
+function emRow(label, val, isOpen) {
+  const v = Number(val) || 0;
+  const c = v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--muted)';
+  const sign = v > 0 ? '+' : v < 0 ? '-' : '';
+  return `<div class="em-row">
+    <span class="em-lbl">${label}</span>
+    <span class="em-val" style="color:${c}">${sign}${fmt(v)}</span>
+  </div>`;
 }
 
-function removeProduct(button) {
-  if (document.querySelectorAll('.product-account-row').length > 1) button.parentElement.remove();
-  else showMsg('modalMsg', 'É necessário ter pelo menos um produto.', false);
-}
+// ─── GRÁFICO ─────────────────────────────────────────────────────
+function buildChart(d) {
+  const section = el('div','chart-section');
 
-function initializeDatabase() {
-  if (!localStorage.getItem(DB_KEYS.PRODUCTS)) localStorage.setItem(DB_KEYS.PRODUCTS, JSON.stringify(INITIAL_PRODUCTS));
-  if (!localStorage.getItem(DB_KEYS.USERS)) localStorage.setItem(DB_KEYS.USERS, JSON.stringify([]));
-  if (!localStorage.getItem(DB_KEYS.LICENSES)) localStorage.setItem(DB_KEYS.LICENSES, JSON.stringify([]));
-}
+  // Header com título + legenda + filtros de período
+  const header = el('div','chart-header');
+  const left = el('div'); left.style.display='flex'; left.style.flexDirection='column'; left.style.gap='8px';
+  const title = el('div','chart-title'); title.textContent = 'LUCRO ACUMULADO';
 
-function getProducts() { return JSON.parse(localStorage.getItem(DB_KEYS.PRODUCTS) || '[]'); }
-function getUsers() { return JSON.parse(localStorage.getItem(DB_KEYS.USERS) || '[]'); }
-function getLicenses() { return JSON.parse(localStorage.getItem(DB_KEYS.LICENSES) || '[]'); }
-function saveProducts(p) { localStorage.setItem(DB_KEYS.PRODUCTS, JSON.stringify(p)); }
-function saveUsers(u) { localStorage.setItem(DB_KEYS.USERS, JSON.stringify(u)); }
-function saveLicenses(l) { localStorage.setItem(DB_KEYS.LICENSES, JSON.stringify(l)); }
-
-function loadProductsDropdown(selector) {
-  const dropdowns = document.querySelectorAll(selector);
-  const products = getProducts();
-  dropdowns.forEach(dropdown => {
-    dropdown.innerHTML = '<option value="">Selecione...</option>';
-    products.forEach(p => { if (p.active) {
-      const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; dropdown.appendChild(opt);
-    }});
-  });
-}
-
-function loadProductsDropdownElement(dropdown, selectedValue = '') {
-  const products = getProducts();
-  dropdown.innerHTML = '<option value="">Selecione...</option>';
-  products.forEach(p => { if (p.active) {
-    const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; opt.selected = (p.id == selectedValue); dropdown.appendChild(opt);
-  }});
-}
-
-function renderProductsTable() {
-  const table = document.getElementById('productsTable');
-  const products = getProducts();
-  table.innerHTML = '';
-  if (products.length === 0) { table.innerHTML = '<tr><td colspan="6" class="loading">Nenhum produto cadastrado</td></tr>'; return; }
-  products.forEach(product => {
-    const row = document.createElement('tr');
-    row.innerHTML = `<td>${product.id}</td><td>${product.name}</td><td>${product.type}</td><td>${product.description || '-'}</td><td>${product.active ? '✅' : '❌'}</td>
-      <td><button class="btn-sm btn-blue" onclick="editProduct(${product.id})">Editar</button><button class="btn-sm" onclick="toggleProduct(${product.id})">${product.active ? 'Desativar' : 'Ativar'}</button><button class="btn-sm btn-red" onclick="delProd(${product.id})">Excluir</button></td>`;
-    table.appendChild(row);
-  });
-}
-
-function renderUsersTable() {
-  const table = document.getElementById('usersTable');
-  const searchTerm = document.getElementById('searchUser').value.toLowerCase();
-  const users = getUsers();
-  const licenses = getLicenses();
-  const products = getProducts();
-  table.innerHTML = '';
-  const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchTerm) || 
-    (u.email && u.email.toLowerCase().includes(searchTerm)) || 
-    (u.phone && u.phone.toLowerCase().includes(searchTerm))
-  );
-  if (filteredUsers.length === 0) { table.innerHTML = '<tr><td colspan="7" class="loading">Nenhum usuário encontrado</td></tr>'; return; }
-  filteredUsers.forEach(user => {
-    const userLicenses = licenses.filter(l => l.userId === user.id);
-    const productsInfo = userLicenses.map(l => {
-      const p = products.find(prod => prod.id === l.productId); return p ? p.name : 'N/A';
-    }).join(', ');
-    const accountsInfo = userLicenses.map(l => `${l.account} (${l.accountType})`).join(', ');
-    const expiryInfo = userLicenses.map(l => l.expiry || '-').join(', ');
-    const row = document.createElement('tr');
-    row.innerHTML = `<td>${user.name}</td><td>${user.email || '-'}</td><td>${user.phone || '-'}</td><td>${productsInfo}</td><td>${accountsInfo}</td><td>${expiryInfo}</td>
-      <td><button class="btn-sm btn-blue" onclick="openEditUserModal(${user.id})">Editar</button><button class="btn-sm btn-red" onclick="deleteUser(${user.id})">Excluir</button></td>`;
-    table.appendChild(row);
-  });
-}
-
-function updateStats() {
-  const users = getUsers();
-  const licenses = getLicenses();
-  document.getElementById('total-users').textContent = users.length;
-  document.getElementById('premium-users').textContent = licenses.filter(l => l.accountType === 'real').length;
-  document.getElementById('trial-users').textContent = licenses.filter(l => l.accountType === 'demo').length;
-  document.getElementById('expired-users').textContent = Math.floor(users.length * 0.15);
-  document.getElementById('active-users').textContent = Math.floor(users.length * 0.7);
-}
-
-function inserirManual() {
-  const name = document.getElementById('mName').value;
-  const productId = parseInt(document.getElementById('mProduct').value);
-  const account = document.getElementById('mAcc').value;
-  const accountType = document.getElementById('mAccountType').value;
-  const expiry = document.getElementById('mExpiry').value;
-  if (!name || !productId || !account || !expiry) { showMsg('msg2', '❌ Preencha todos os campos obrigatórios', false); return; }
-  try {
-    const users = getUsers();
-    const newUser = { id: Date.now(), name, created: new Date().toISOString() };
-    users.push(newUser); saveUsers(users);
-    const licenses = getLicenses();
-    licenses.push({ id: Date.now(), userId: newUser.id, productId, account, accountType, expiry, created: new Date().toISOString() });
-    saveLicenses(licenses);
-    showMsg('msg2', '✅ Licença inserida com sucesso!', true);
-    document.getElementById('mName').value = ''; document.getElementById('mAcc').value = ''; document.getElementById('mExpiry').value = '';
-    renderUsersTable(); updateStats();
-  } catch (e) { showMsg('msg2', '❌ Erro ao inserir licença', false); }
-}
-
-function addProd() {
-  const name = document.getElementById('pName').value;
-  const type = document.getElementById('pType').value;
-  const description = document.getElementById('pDesc').value;
-  if (!name || !type) { showMsg('msg3', '❌ Preencha pelo menos nome e tipo', false); return; }
-  try {
-    const products = getProducts();
-    products.push({ id: Date.now(), name, type, description, active: true });
-    saveProducts(products);
-    showMsg('msg3', '✅ Produto adicionado!', true);
-    document.getElementById('pName').value = '';
-    document.getElementById('pDesc').value = '';
-    renderProductsTable();
-    loadProductsDropdown('#mProduct');
-  } catch (e) { showMsg('msg3', '❌ Erro ao adicionar produto', false); }
-}
-
-function saveUser() {
-  const userId = document.getElementById('uId').value;
-  const name = document.getElementById('uName').value;
-  const email = document.getElementById('uEmail').value;
-  const phone = document.getElementById('uPhone').value;
-
-  // Busca APENAS dentro do modal, não em toda a página
-  const modal = document.getElementById('userModal');
-  const userProducts = [];
-  modal.querySelectorAll('.product-account-row').forEach(row => {
-    const productId = parseInt(row.querySelector('.user-product').value);
-    const account = row.querySelector('.user-account').value;
-    const accountType = row.querySelector('.user-account-type').value;
-    const minLots = parseFloat(row.querySelector('.user-minlots').value) || 0;
-    const maxLots = parseFloat(row.querySelector('.user-maxlots').value) || 0;
-    const instances = parseInt(row.querySelector('.user-instances').value) || 1;
-    const expiry = row.querySelector('.product-expiry').value;
-    if (productId && account) userProducts.push({ productId, account, accountType, minLots, maxLots, instances, expiry });
+  // Filtros de período
+  const pf = el('div','period-filters');
+  const pfLabels = [['7D','7d'],['1M','1m'],['3M','3m'],['1A','1a'],['Tudo','all']];
+  pfLabels.forEach(([label, key]) => {
+    const btn = el('div','pf-btn'+(activePeriod===key?' active':''));
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      activePeriod = key;
+      state.customFrom = null; state.customTo = null;
+      document.querySelectorAll('.pf-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const fi=document.getElementById('dateFrom'); if(fi) fi.value='';
+      const ti=document.getElementById('dateTo');   if(ti) ti.value='';
+      initChart(d);
+      // Atualiza stats bar com o novo período
+      const sb = document.querySelector('.stats-bar');
+      if (sb) { const newSb = buildStatsBar(d); sb.replaceWith(newSb); }
+    });
+    pf.appendChild(btn);
   });
 
-  if (!name || userProducts.length === 0) { showMsg('modalMsg', '❌ Preencha os campos obrigatórios', false); return; }
-  try {
-    const users = getUsers();
-    let user;
-    if (userId) {
-      user = users.find(u => u.id == userId);
-      if (user) { user.name = name; user.email = email; user.phone = phone; }
-      saveUsers(users);
-      // Remove licenças antigas deste usuário e recria com as novas
-      const otherLicenses = getLicenses().filter(l => l.userId != userId);
-      const newLicenses = userProducts.map(up => ({
-        id: Date.now() + Math.random(),
-        userId: user.id,
-        productId: up.productId,
-        account: up.account,
-        accountType: up.accountType,
-        expiry: up.expiry,
-        created: new Date().toISOString()
-      }));
-      saveLicenses([...otherLicenses, ...newLicenses]);
-    } else {
-      user = { id: Date.now(), name, email, phone, created: new Date().toISOString() };
-      users.push(user);
-      saveUsers(users);
-      const existingLicenses = getLicenses();
-      const newLicenses = userProducts.map(up => ({
-        id: Date.now() + Math.random(),
-        userId: user.id,
-        productId: up.productId,
-        account: up.account,
-        accountType: up.accountType,
-        expiry: up.expiry,
-        created: new Date().toISOString()
-      }));
-      saveLicenses([...existingLicenses, ...newLicenses]);
+  // Separador
+  const sep = el('span'); sep.style.cssText='color:var(--bdr);padding:0 4px;align-self:center;font-size:14px';
+  sep.textContent='|'; pf.appendChild(sep);
+
+  // Campos De / Até
+  const dateWrap = el('div'); dateWrap.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap';
+  dateWrap.innerHTML=`
+    <span style="font-size:11px;color:var(--muted);font-weight:600">De</span>
+    <input id="dateFrom" type="date" style="background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);padding:3px 8px;font-size:11px;outline:none" value="${state.customFrom||''}">
+    <span style="font-size:11px;color:var(--muted);font-weight:600">Até</span>
+    <input id="dateTo" type="date" style="background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);padding:3px 8px;font-size:11px;outline:none" value="${state.customTo||''}">
+    <button onclick="applyDateRange()" style="background:var(--blue2);border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer">Aplicar</button>
+  `;
+  pf.appendChild(dateWrap);
+
+  left.appendChild(title); left.appendChild(pf);
+
+  // Legenda clicável
+  const legend = el('div','chart-legend');
+  d.eas.forEach((ea, idx) => {
+    const c = EA_COLORS[idx%EA_COLORS.length];
+    const nm = ea.name || ('Magic#'+ea.magic);
+    const vis = state.visibleEAs[ea.magic] !== false;
+    const btn = el('div', 'leg-btn ' + (vis?'active':'inactive'));
+    btn.style.borderColor = c; btn.style.color = c;
+    btn.innerHTML = `<span class="leg-dot" style="background:${c}"></span>${nm}`;
+    btn.addEventListener('click', () => {
+      state.visibleEAs[ea.magic] = !state.visibleEAs[ea.magic];
+      updateChart(d);
+      btn.className = 'leg-btn ' + (state.visibleEAs[ea.magic]?'active':'inactive');
+      // Atualiza stats bar com o EA selecionado
+      const sb = document.querySelector('.stats-bar');
+      if (sb) { const newSb = buildStatsBar(d); sb.replaceWith(newSb); }
+    });
+    legend.appendChild(btn);
+  });
+
+  header.appendChild(left); header.appendChild(legend);
+  section.appendChild(header);
+
+  // Canvas — dimensões explícitas para iOS Safari
+  const wrap = el('div','chart-canvas-wrap');
+  const canvas = document.createElement('canvas');
+  canvas.id = 'chart';
+  canvas.style.cssText = 'display:block;width:100%;height:100%;-webkit-tap-highlight-color:transparent';
+  wrap.appendChild(canvas); section.appendChild(wrap);
+  setTimeout(() => initChart(d), 100); // delay maior para iOS renderizar o DOM
+  return section;
+}
+
+function initChart(d) {
+  const canvas = document.getElementById('chart');
+  if (!canvas) return;
+  if (state.chart) { state.chart.destroy(); state.chart = null; }
+
+  const maxPts = 200;
+  const now = Date.now();
+
+  // ── Range de datas EXATO baseado no período selecionado ──────────
+  let realStart, realEnd = now;
+
+  if (state.customFrom || state.customTo) {
+    realStart = state.customFrom ? new Date(state.customFrom).getTime() : null;
+    realEnd   = state.customTo   ? new Date(state.customTo + 'T23:59:59').getTime() : now;
+    if (!realStart) {
+      d.eas.forEach(ea => { if (ea.equityStart) {
+        const s = ea.equityStart * 1000;
+        if (!realStart || s < realStart) realStart = s; } });
     }
-    showMsg('modalMsg', userId ? '✅ Usuário atualizado!' : '✅ Usuário adicionado!', true);
-    setTimeout(() => { closeUserModal(); renderUsersTable(); updateStats(); }, 1000);
-  } catch (e) { showMsg('modalMsg', '❌ Erro ao salvar usuário', false); }
-}
+  } else if (activePeriod && PERIODS[activePeriod]) {
+    realEnd   = now;
+    realStart = now - PERIODS[activePeriod] * 86400000;
+  } else {
+    // "Tudo"
+    realStart = null;
+    d.eas.forEach(ea => { if (ea.equityStart) {
+      const s = ea.equityStart * 1000;
+      if (!realStart || s < realStart) realStart = s; } });
+    if (!realStart) realStart = now - 365 * 86400000;
+  }
+  if (!realStart) realStart = now - 7 * 86400000;
 
-function editProduct(id) {
-  const products = getProducts();
-  const product = products.find(p => p.id === id);
-  if (!product) return;
+  // ── Filtra e mapeia pontos para o período selecionado ────────────
+  function filterPoints(ea) {
+    const pts = ea.equity;
+    if (!pts || pts.length < 1) return null;
 
-  // Cria modal inline de edição
-  let modal = document.getElementById('editProdModal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'editProdModal';
-    modal.className = 'modal';
-    modal.style.display = 'none';
-    modal.innerHTML = `
-      <div class="modal-content" style="max-width:480px">
-        <div class="modal-header">
-          <h3 class="modal-title">✏️ Editar Produto</h3>
-          <span class="close" onclick="document.getElementById('editProdModal').style.display='none'">&times;</span>
-        </div>
-        <div class="modal-body">
-          <div id="editProdMsg" class="msg"></div>
-          <div class="form-row" style="margin-bottom:10px">
-            <div class="fg" style="width:100%">
-              <label>ID</label>
-              <input type="text" id="eProdId" style="width:100%;opacity:.6" readonly>
-            </div>
-          </div>
-          <div class="form-row" style="margin-bottom:10px">
-            <div class="fg" style="width:100%">
-              <label>Nome *</label>
-              <input type="text" id="eProdName" style="width:100%">
-            </div>
-          </div>
-          <div class="form-row" style="margin-bottom:10px">
-            <div class="fg" style="width:100%">
-              <label>Tipo</label>
-              <select id="eProdType" style="width:100%">
-                <option value="ea">Expert Advisor</option>
-                <option value="indicator">Indicador</option>
-                <option value="dashboard">Dashboard</option>
-                <option value="other">Outro</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-row" style="margin-bottom:16px">
-            <div class="fg" style="width:100%">
-              <label>Descrição</label>
-              <input type="text" id="eProdDesc" style="width:100%">
-            </div>
-          </div>
-          <div style="display:flex;gap:8px;justify-content:flex-end">
-            <button class="btn" style="background:#21262d;color:#e6edf3" onclick="document.getElementById('editProdModal').style.display='none'">Cancelar</button>
-            <button class="btn btn-green" onclick="saveEditProduct()">✓ Salvar</button>
-          </div>
-        </div>
-      </div>`;
-    document.body.appendChild(modal);
+    const dataStartMs = (ea.equityStart||0) * 1000;
+    const dataEndMs   = (ea.equityEnd  ||0) * 1000 || now;
+    if (!dataStartMs || dataEndMs <= dataStartMs) return null;
+
+    // ms por ponto na série recebida (curva diária = 1 ponto/dia)
+    const msPerPt = (dataEndMs - dataStartMs) / pts.length;
+    if (msPerPt <= 0) return null;
+
+    // Para cada posição X do gráfico (0..maxPts-1), calcula qual valor corresponde
+    const result = [];
+    let anyData = false;
+    for (let xi = 0; xi < maxPts; xi++) {
+      // Timestamp desta posição no gráfico
+      const tMs = realStart + (xi / (maxPts - 1)) * (realEnd - realStart);
+      // Índice correspondente na série do EA
+      const idx = (tMs - dataStartMs) / msPerPt;
+      if (idx < 0 || idx >= pts.length) {
+        result.push(null); // fora do range de dados
+      } else {
+        // Interpolação linear entre pontos adjacentes
+        const lo = Math.floor(idx), hi = Math.min(Math.ceil(idx), pts.length - 1);
+        const v  = pts[lo] + (pts[hi] - pts[lo]) * (idx - lo);
+        result.push(v);
+        anyData = true;
+      }
+    }
+    return anyData ? result : null;
   }
 
-  document.getElementById('eProdId').value = product.id;
-  document.getElementById('eProdName').value = product.name;
-  document.getElementById('eProdType').value = product.type.toLowerCase().replace(' ','_') || 'ea';
-  document.getElementById('eProdDesc').value = product.description || '';
-  modal.style.display = 'block';
+  const labels = Array.from({length:maxPts},(_,i)=>i);
+  let hasData = false;
+
+  const datasets = d.eas.map((ea, idx) => {
+    const c = EA_COLORS[idx%EA_COLORS.length];
+    const pts = filterPoints(ea);
+    if (pts) hasData = true;
+    // Alinha todos os datasets para o mesmo tamanho
+    const aligned = pts ? pts : null;
+    return {
+      label: ea.name || ('Magic#'+ea.magic),
+      data: aligned || Array(maxPts).fill(null),
+      borderColor: c,
+      borderWidth: 2,
+      pointRadius: 0,
+      tension: 0.3,
+      hidden: state.visibleEAs[ea.magic] === false || !pts,
+      fill: false,
+      spanGaps: false,
+    };
+  });
+
+  if (!hasData) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = '#8892b0';
+    ctx.font = '13px Inter,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Sem dados no período selecionado', canvas.width/2, canvas.height/2);
+    return;
+  }
+
+  // Labels diários — cada posição X corresponde a uma data exata
+  const spanMs = realEnd - realStart;
+  const dateLabels = [];
+  let lastLabel = '';
+  for (let i = 0; i < maxPts; i++) {
+    const ms = realStart + (i / (maxPts - 1)) * spanMs;
+    const dt = new Date(ms);
+    const lbl = String(dt.getDate()).padStart(2,'0') + '/' + String(dt.getMonth()+1).padStart(2,'0');
+    dateLabels.push(lbl !== lastLabel ? lbl : '');
+    if (lbl !== lastLabel) lastLabel = lbl;
+  }
+
+  const ctx = canvas.getContext('2d', {willReadFrequently: false});
+  if (!ctx) return; // iOS pode falhar silenciosamente
+
+  state.chart = new Chart(ctx, {
+    type:'line',
+    data:{ labels: dateLabels, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{left:0,right:0,top:4,bottom:0}},
+      animation:{duration:300},
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          mode:'index', intersect:false,
+          backgroundColor:'#0d0f1a',
+          titleColor:'#8892b0',
+          bodyColor:'#e8ecf4',
+          borderColor:'#288cff',
+          borderWidth:1,
+          callbacks:{
+            title: items => items[0]?.label || '',
+            label: c => {
+              if (c.raw === null) return null;
+              const val = Number(c.raw);
+              const sign = val >= 0 ? '+' : '';
+              return ` ${c.dataset.label}: ${sign}$ ${Math.abs(val).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+            }
+          }
+        }
+      },
+      scales:{
+        x:{
+          display:true,
+          grid:{color:'#1a1f3588',lineWidth:1},
+          ticks:{color:'#8892b0',font:{size:10,weight:'500'},maxTicksLimit:10,maxRotation:0}
+        },
+        y:{
+          grid:{color:'#1a1f3588',lineWidth:1},
+          ticks:{
+            color:'#8892b0',
+            font:{size:11,weight:'600'},
+            callback: v => {
+              const abs = Math.abs(v);
+              const sign = v >= 0 ? '+' : '-';
+              if (abs >= 1000000) return sign+'$'+(abs/1000000).toFixed(1)+'M';
+              if (abs >= 1000)    return sign+'$'+(abs/1000).toFixed(1)+'k';
+              return sign+'$'+abs.toFixed(0);
+            }
+          },
+          border:{color:'#2a3050'}
+        }
+      }
+    }
+  });
 }
 
-function saveEditProduct() {
-  const id   = document.getElementById('eProdId').value;
-  const name = document.getElementById('eProdName').value.trim();
-  const type = document.getElementById('eProdType').value;
-  const desc = document.getElementById('eProdDesc').value.trim();
-  if (!name) { showMsg('editProdMsg', '❌ Nome obrigatório', false); return; }
-  const products = getProducts();
-  const idx = products.findIndex(p => p.id == id);
-  if (idx === -1) return;
-  products[idx].name = name;
-  products[idx].type = type;
-  products[idx].description = desc;
-  saveProducts(products);
-  renderProductsTable();
-  loadProductsDropdown('#mProduct'); // só o dropdown da seção de inserção
-  document.getElementById('editProdModal').style.display = 'none';
-  showMsg('msg3', '✅ Produto atualizado!', true);
+function updateChart(d) {
+  if (!state.chart) return;
+  state.chart.data.datasets.forEach((ds, idx) => {
+    const ea = d.eas[idx];
+    if (ea) ds.hidden = state.visibleEAs[ea.magic] === false;
+  });
+  state.chart.update();
 }
 
-function toggleProduct(id) {
-  const products = getProducts();
-  const idx = products.findIndex(p => p.id === id);
-  if (idx !== -1) {
-    products[idx].active = !products[idx].active;
-    saveProducts(products);
-    renderProductsTable();
-    loadProductsDropdown('#mProduct');
+// ─── META/STOP CHECK ─────────────────────────────────────────────
+function checkDailyLimits(d) {
+  if (!state.metaDia && !state.stopDia) return;
+  const totDay = d.eas.reduce((s,e)=>s+e.profitDay,0);
+  if (state.metaDia > 0 && totDay >= state.metaDia && !state.metaAtingida) {
+    state.metaAtingida = true;
+    if (state.isPremium) { d.eas.forEach((_,i)=>sendCommand('fechar',d.eas[i].magic)); }
+  }
+  if (state.stopDia > 0 && totDay <= -state.stopDia && !state.stopAtingido) {
+    state.stopAtingido = true;
+    if (state.isPremium) { d.eas.forEach((_,i)=>sendCommand('fechar',d.eas[i].magic)); }
   }
 }
 
-function delProd(id) {
-  if (!confirm('Remover produto?')) return;
-  const products = getProducts().filter(p => p.id !== id);
-  saveProducts(products);
-  renderProductsTable();
-  loadProductsDropdown('#mProduct');
+// ─── UTILS ───────────────────────────────────────────────────────
+function el(tag, cls='') {
+  const e = document.createElement(tag.includes(' ')?'div':tag);
+  if (cls) e.className = cls;
+  return e;
 }
 
-function deleteUser(id) {
-  if (!confirm('Remover usuário?')) return;
-  saveUsers(getUsers().filter(u => u.id !== id));
-  saveLicenses(getLicenses().filter(l => l.userId !== id));
-  renderUsersTable(); updateStats();
+function fmt(v) {
+  return '$ '+Math.abs(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-  initializeDatabase();
-  renderProductsTable();
-  renderUsersTable();
-  updateStats();
-  loadProductsDropdown('#mProduct');
-  const defaultDate = new Date();
-  defaultDate.setDate(defaultDate.getDate() + 30);
-  document.getElementById('mExpiry').value = defaultDate.toISOString().split('T')[0];
-});
-
-window.onclick = function(event) {
-  if (event.target.className === 'modal') closeUserModal();
-};
+// ─── INIT ────────────────────────────────────────────────────────
+// Inicialização controlada pelo sistema de auth (window.onload acima)
 </script>
 </body>
 </html>
