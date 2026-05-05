@@ -597,11 +597,10 @@ http.createServer(async(req,res)=>{
     sendJSON(res,404,{error:'Rota admin não encontrada'});return;
   }
 
-  // ── /fix-bins — corrigir bins duplicados ────────────────────────
+  // /fix-bins — corrigir bins duplicados
   if(reqPath==='/fix-bins'&&method==='GET'){
     const mk=MASTER_KEY;
     if(!mk){sendJSON(res,400,{error:'JSONBIN_MASTER_KEY nao configurado'});return;}
-
     function createBin(name,data){
       return new Promise(resolve=>{
         const body=JSON.stringify(data);
@@ -615,44 +614,25 @@ http.createServer(async(req,res)=>{
         req2.write(body);req2.end();
       });
     }
-
-    const problems=[];
-    const fixes={};
-
-    // Problema 1: CMD_BIN igual ao LICENSE_BIN
+    const problems=[];const fixes={};const instructions=[];
     if(CMD_BIN===LICENSE_BIN){
-      problems.push('CMD_BIN igual ao LICENSE_BIN — criando bin separado');
+      problems.push('CMD_BIN igual ao LICENSE_BIN');
       const r=await createBin('dashbot-cmd',{cmd:'none'});
-      fixes.JSONBIN_CMD_BIN={ok:r.ok,newId:r.id,action:'criar novo bin dashbot-cmd'};
+      fixes.JSONBIN_CMD_BIN={ok:r.ok,newId:r.id,action:'novo bin criado'};
+      if(r.ok) instructions.push('JSONBIN_CMD_BIN='+r.id);
     } else {
       fixes.JSONBIN_CMD_BIN={ok:true,id:CMD_BIN,action:'ja correto'};
     }
-
-    // Problema 2: AUTH_BIN com 
- no final
-    const authBinClean=AUTH_BIN.trim();
-    if(AUTH_BIN!==authBinClean){
-      problems.push('AUTH_BIN tem espacos/newlines — valor: "'+AUTH_BIN+'"');
-      fixes.JSONBIN_AUTH_BIN={ok:true,cleanId:authBinClean,action:'remover newline — use o ID limpo'};
+    const authClean=AUTH_BIN?AUTH_BIN.trim():'';
+    if(AUTH_BIN&&AUTH_BIN!==authClean){
+      problems.push('AUTH_BIN tem newline/espacos no final');
+      fixes.JSONBIN_AUTH_BIN={ok:true,cleanId:authClean,action:'use o ID limpo'};
+      instructions.push('JSONBIN_AUTH_BIN='+authClean);
     } else {
       fixes.JSONBIN_AUTH_BIN={ok:true,id:AUTH_BIN,action:'ja correto'};
     }
-
-    const instructions=[];
-    if(fixes.JSONBIN_CMD_BIN.newId) instructions.push('JSONBIN_CMD_BIN='+fixes.JSONBIN_CMD_BIN.newId);
-    if(fixes.JSONBIN_AUTH_BIN.cleanId) instructions.push('JSONBIN_AUTH_BIN='+fixes.JSONBIN_AUTH_BIN.cleanId);
-
-    sendJSON(res,200,{
-      ok:true,
-      problems,
-      fixes,
-      action: instructions.length>0
-        ? 'Atualize estas variaveis no Render > Environment:
-
-'+instructions.join('
-')
-        : 'Nenhuma alteracao necessaria'
-    });
+    const actionMsg=instructions.length>0?('Atualize no Render > Environment: '+instructions.join(' | ')):'Nenhuma alteracao necessaria';
+    sendJSON(res,200,{ok:true,problems,fixes,instructions,action:actionMsg});
     return;
   }
 
