@@ -349,16 +349,26 @@ async function apiCall(method, path, body) {
 function toServerId(localId) {
   // Se já é um prod_ ID, retornar direto
   if (String(localId).startsWith('prod_')) return String(localId);
-  // Se é um número, mapear via posição nos produtos locais
+  // Buscar o produto local pelo id
   const localProds = getProducts();
   const p = localProds.find(x => x.id == localId);
   if (!p) return null;
-  // Buscar pelo nome no mapa
   const upperName = p.name.toUpperCase();
+  // 1. Tentar mapa direto (IRON, HULK, etc.)
   if (PRODUCT_ID_MAP[upperName]) return PRODUCT_ID_MAP[upperName];
-  // Tentar encontrar nos produtos do servidor pelo nome
-  const sp = _serverProducts.find(x => x.name.toUpperCase() === upperName);
-  return sp ? sp.id : null;
+  // 2. Tentar com trim e variações (Iron → IRON)
+  const trimmed = upperName.replace(/[^A-Z0-9]/g,'');
+  for (const [k,v] of Object.entries(PRODUCT_ID_MAP)) {
+    if (k.replace(/[^A-Z0-9]/g,'') === trimmed) return v;
+  }
+  // 3. Tentar encontrar nos produtos do servidor pelo nome
+  if (_serverProducts.length > 0) {
+    const sp = _serverProducts.find(x => x.name.toUpperCase().replace(/[^A-Z0-9]/g,'') === trimmed);
+    if (sp) return sp.id;
+  }
+  // 4. Se o produto foi sincronizado do servidor e tem id próprio, pode já ser prod_XXX
+  // Verificar se o nome bate com algum produto do servidor
+  return null;
 }
 
 // ── DB_KEYS — localStorage (mantido para compatibilidade visual) ──
@@ -697,7 +707,9 @@ async function saveUser() {
           endDate: mainExpiry
         });
         if (!r || !r.ok) {
-          showMsg('modalMsg', '❌ Erro ao registrar conta ' + account + ': ' + (r?.error||''), false);
+          const errDetail = r?.error || (r ? JSON.stringify(r) : 'Servidor não respondeu');
+          showMsg('modalMsg', '❌ Erro ao registrar conta ' + account + ': ' + errDetail, false);
+          console.error('Register error:', r);
           return;
         }
       }
@@ -915,10 +927,15 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (b.productsJson) {
       _serverProducts = Array.isArray(b.productsJson) ? b.productsJson : [];
       // Sincronizar produtos locais com os do servidor
+      // IMPORTANTE: usar nomes MAIÚSCULOS para compatibilidade com PRODUCT_ID_MAP
       if (_serverProducts.length > 0) {
         const mapped = _serverProducts.map((p,i) => ({
-          id: i+1, name: p.name, type: p.type||'ea',
-          description: p.description||'', active: p.active!==false
+          id: i+1,
+          name: p.name.toUpperCase(), // garante compatibilidade com PRODUCT_ID_MAP
+          type: p.type||'ea',
+          description: p.description||'',
+          active: p.active!==false,
+          serverId: p.id // guardar o ID real do servidor
         }));
         saveProducts(mapped);
       }
