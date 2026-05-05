@@ -318,16 +318,29 @@ function showConfigOverlay() {
 }
 
 function toServerId(localId) {
-  if (String(localId).startsWith('prod_')) return String(localId);
-  var lp = getProducts().find(function(x) { return x.id == localId; });
+  if (!localId) return null;
+  var s = String(localId);
+  // Já é um ID do servidor
+  if (s.startsWith('prod_')) return s;
+  // Buscar pelo ID local no localStorage
+  var lp = getProducts().find(function(x) { return String(x.id) === s; });
   if (!lp) return null;
-  var up = lp.name.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  var name = lp.name.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  // Tentar mapa direto
   var keys = Object.keys(PROD_MAP);
   for (var i=0; i<keys.length; i++) {
-    if (keys[i].replace(/[^A-Z0-9]/g,'') === up) return PROD_MAP[keys[i]];
+    if (keys[i].replace(/[^A-Z0-9]/g,'') === name) return PROD_MAP[keys[i]];
   }
-  var sp = _serverProds.find(function(x) { return x.name.toUpperCase().replace(/[^A-Z0-9]/g,'') === up; });
-  return sp ? sp.id : null;
+  // Tentar serverId guardado no objeto local
+  if (lp.serverId) return lp.serverId;
+  // Tentar nos produtos carregados do servidor
+  var sp = _serverProds.find(function(x) {
+    return x.name.toUpperCase().replace(/[^A-Z0-9]/g,'') === name;
+  });
+  if (sp) return sp.id;
+  // Fallback: usar o ID local direto (servidor vai validar)
+  console.warn('[toServerId] nao mapeado:', localId, lp.name);
+  return null;
 }
 
 // ── Config ────────────────────────────────────────────────────────
@@ -407,12 +420,33 @@ async function loadUsersTable() {
     var html = await res.text();
     var m = html.match(/id="usersTable"[^>]*>([\s\S]*?)<\/tbody>/);
     if (m) document.getElementById("usersTable").innerHTML = m[1];
-    var smap = {total:"total-users",premium:"premium-users",trial:"trial-users",expired:"expired-users",active:"active-users"};
-    Object.keys(smap).forEach(function(k) {
-      var sm = html.match(new RegExp("id=\""+smap[k]+"\">(\\d+)"));
-      if (sm) { var el=document.getElementById(smap[k]); if(el) el.textContent=sm[1]; }
-    });
   } catch(e) { console.warn("loadUsersTable error:", e.message); }
+}
+
+function renderUsersFromData(users, stats) {
+  var tb = document.getElementById("usersTable");
+  if (!users||!users.length) { tb.innerHTML='<tr><td colspan="7" class="loading">Nenhum usuario</td></tr>'; return; }
+  var colors = {lifetime:"#7c3aed",premium:"#10b981",trial:"#3b82f6"};
+  tb.innerHTML = users.map(function(u) {
+    var bc = colors[u.plan]||"#ef4444";
+    var prods = (u.products||[]).map(function(p){return '<span style="background:#1e2438;padding:2px 5px;border-radius:4px;font-size:10px">'+p.name+(p.accountType?"("+p.accountType+")":"")+"</span>";}).join(" ");
+    var sn=encodeURIComponent(u.name||""),se=encodeURIComponent(u.email||""),sp=encodeURIComponent(u.phone||"");
+    return "<tr>"
+      +"<td><code>"+u.account+"</code></td>"
+      +"<td>"+(u.name||"—")+"<br><small style='color:#64748b'>"+(u.email||"")+" "+(u.phone||"")+"</small></td>"
+      +'<td><span class="badge" style="background:'+bc+'">'+u.plan+"</span></td>"
+      +"<td>"+(u.endDate||"—")+"</td>"
+      +"<td>"+(u.lastSeen||"—")+"</td>"
+      +"<td>"+(prods||"—")+'<br><button class="btn-sm" onclick="addUserProd(\'"+u.account+"\')'>+ Produto</button></td>"
+      +"<td>"
+      +'<button class="btn-sm" onclick="editUser(\'"+u.account+"\'\'\'"+sn+"\'\'\'"+se+"\'\'\'"+sp+"\'\')">✏</button> '
+      +'<button class="btn-sm" onclick="bonusModal(\'"+u.account+"\'\'\'"+sn+"\'\')">📅</button> '
+      +'<button class="btn-sm btn-red" onclick="revogar(\'"+u.account+"\'\')">🚫</button> '
+      +'<button class="btn-sm" onclick="resetPw(\'"+u.account+"\'\')">↺</button> '
+      +'<button class="btn-sm btn-red" onclick="delUser(\'"+u.account+"\'\')">🗑</button>'
+      +"</td></tr>";
+  }).join("");
+  if(stats){var sm={total:"total-users",premium:"premium-users",trial:"trial-users",expired:"expired-users",active:"active-users"};Object.keys(sm).forEach(function(k){var el=document.getElementById(sm[k]);if(el&&stats[k]!==undefined)el.textContent=stats[k];});}
 }
 
 
