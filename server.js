@@ -421,6 +421,23 @@ http.createServer(async(req,res)=>{
       return;
     }
 
+    if(reqPath==='/admin/users-json'&&method==='GET'){
+      const lics=await getLics();const now=Date.now();
+      const users=[];let stats={total:0,premium:0,trial:0,expired:0,active:0};
+      for(const[acct,lic]of Object.entries(lics)){
+        if(acct.startsWith('_'))continue;
+        const s=checkLic(lic);stats.total++;
+        if(s.plan==='premium'||s.plan==='lifetime')stats.premium++;
+        else if(s.plan==='trial')stats.trial++;
+        else stats.expired++;
+        if(lic.lastSeen&&now-lic.lastSeen<7*DAY_MS)stats.active++;
+        const endDate=s.plan==='lifetime'?'Vitalicia':s.plan==='premium'?ptDate(lic.premiumEnd):s.plan==='trial'?ptDate(lic.trialEnd):'—';
+        const lastSeen=lic.lastSeen?new Date(lic.lastSeen).toLocaleDateString('pt-BR'):'—';
+        users.push({account:acct,name:lic.name||'',email:lic.email||'',phone:lic.phone||'',plan:s.plan,endDate,lastSeen,products:lic.products||[]});
+      }
+      sendJSON(res,200,{ok:true,users,stats});return;
+    }
+
     if(reqPath==='/admin/register'&&method==='POST'){
       const body=await readBody(req);let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
       if(!d.account){sendJSON(res,400,{error:'Conta MT5 obrigatória'});return;}
