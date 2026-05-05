@@ -291,7 +291,9 @@ async function api(method, path, body) {
       document.getElementById('cfgMsg').textContent = 'Credenciais invalidas. Tente novamente.';
       showConfigOverlay(); return null;
     }
-    return res.json();
+    const data = await res.json();
+    if (!res.ok) console.warn('[API]', method, path, res.status, data);
+    return data;
   } catch(e) {
     showMsg('msg2', 'Erro de conexao: ' + e.message, false);
     return null;
@@ -594,7 +596,12 @@ async function saveUser() {
     } else {
       var serverProds=ps.map(function(p){return {productId:p.sid,accountType:p.type,accountReal:p.type==='real'?acct:'',accountDemo:p.type==='demo'?acct:'',minLots:p.minL,maxLots:p.maxL,instances:p.inst};});
       var r=await api('POST','/admin/register',{account:acct,name:name,email:email,phone:phone,products:serverProds,endDate:ps[0].exp});
-      if (!r||!r.ok) { showMsg('modalMsg','Erro conta '+acct+': '+(r&&r.error||'falha'),false); return; }
+      if (!r||!r.ok) {
+        var errDetail = (r&&r.error) ? r.error : (r ? JSON.stringify(r) : 'Sem resposta do servidor');
+        showMsg('modalMsg','Erro na conta '+acct+': '+errDetail,false);
+        console.error('Register error:', r);
+        return;
+      }
     }
     for (var j=0; j<ps.length; j++) {
       var p=ps[j];
