@@ -29,26 +29,38 @@ const DEFAULT_PRODUCTS = [
 // ── MongoDB ───────────────────────────────────────────────────────
 let db = null; // MongoDB database instance
 
+let mongoError = '';
+
 async function connectMongo() {
   if (!MONGO_URI) {
-    console.warn('[MongoDB] MONGO_URI não configurado — usando armazenamento em memória');
+    mongoError = 'MONGO_URI não configurado';
+    console.warn('[MongoDB]', mongoError);
     return false;
   }
   try {
-    const { MongoClient } = require('mongodb');
-    const client = new MongoClient(MONGO_URI, { serverSelectionTimeoutMS: 5000 });
+    // Verificar se mongodb está instalado
+    let MongoClient;
+    try {
+      MongoClient = require('mongodb').MongoClient;
+    } catch(e) {
+      mongoError = 'Pacote mongodb não instalado. Adicione ao package.json: npm install mongodb';
+      console.error('[MongoDB]', mongoError);
+      return false;
+    }
+    console.log('[MongoDB] Conectando...');
+    const client = new MongoClient(MONGO_URI, { serverSelectionTimeoutMS: 10000 });
     await client.connect();
     db = client.db('dashbot');
-    // Criar índices
     await db.collection('licenses').createIndex({ account: 1 }, { unique: true });
     await db.collection('auth').createIndex({ key: 1 }, { unique: true });
     await db.collection('cmd').createIndex({ key: 1 }, { unique: true });
-    console.log('[MongoDB] Conectado com sucesso');
-    // Garantir produtos padrão
+    console.log('[MongoDB] Conectado com sucesso!');
+    mongoError = '';
     await ensureProducts();
     return true;
   } catch(e) {
-    console.error('[MongoDB] Erro de conexão:', e.message);
+    mongoError = e.message;
+    console.error('[MongoDB] Erro:', e.message);
     return false;
   }
 }
@@ -273,12 +285,14 @@ http.createServer(async(req,res)=>{
   if(reqPath==='/status'){
     sendJSON(res,200,{
       ok:true,
-      storage: db ? 'MongoDB Atlas' : 'Memoria (configure MONGO_URI)',
+      storage: db ? 'MongoDB Atlas' : 'Memoria',
+      mongo_connected: !!db,
+      mongo_error: mongoError||null,
       config:{
-        MONGO_URI: MONGO_URI ? 'configurado' : 'NAO CONFIGURADO',
+        MONGO_URI: MONGO_URI ? 'configurado ('+MONGO_URI.substring(0,30)+'...)' : 'NAO CONFIGURADO',
         ADMIN_USER, DASHBOT_TOKEN:PROXY_TOKEN
       },
-      missing: !MONGO_URI ? ['MONGO_URI'] : []
+      missing: !MONGO_URI ? ['MONGO_URI'] : (!db ? ['Verifique mongo_error'] : [])
     });return;
   }
 
