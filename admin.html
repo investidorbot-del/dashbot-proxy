@@ -288,9 +288,12 @@ function saveConfig() {
   AUTH   = 'Basic ' + btoa(user + ':' + pass);
   localStorage.setItem('db_server', SERVER);
   localStorage.setItem('db_auth',   AUTH);
+  _serverAuthHeader = AUTH;
+  _serverMode = true;
   document.getElementById('configOverlay').style.display = 'none';
-  // Recarregar produtos do servidor
-  loadServerProducts();
+  // Recarregar produtos e usuários do servidor
+  await loadServerProducts();
+  await refreshUsersTable();
 }
 
 function clearConfig() {
@@ -527,7 +530,7 @@ async function inserirManual() {
   document.getElementById('mName').value = '';
   document.getElementById('mAcc').value  = '';
   document.getElementById('mExpiry').value = '';
-  renderUsersTable(); updateStats();
+  await refreshUsersTable();
 }
 
 // ── Modal de Usuário ──────────────────────────────────────────────
@@ -762,7 +765,7 @@ async function saveUser() {
     }
 
     showMsg('modalMsg', userId ? '✅ Usuário atualizado no servidor!' : '✅ Usuário registrado no servidor!', true);
-    setTimeout(() => { closeUserModal(); renderUsersTable(); updateStats(); }, 1000);
+    setTimeout(async () => { closeUserModal(); await refreshUsersTable(); }, 800);
 
   } catch(e) {
     showMsg('modalMsg', '❌ Erro: ' + e.message, false);
@@ -917,39 +920,56 @@ async function loadServerProducts() {
 document.addEventListener('DOMContentLoaded', async function() {
   initializeDatabase();
 
-  // Usar dados injetados pelo servidor (quando admin serve via /admin)
+  // Detectar modo de operação
   if (window.__SERVER_BOOTSTRAP__) {
+    // Modo servidor: página servida pelo /admin com dados injetados
+    _serverMode = true;
+    // Recuperar auth salvo (digitado pelo usuário anteriormente)
+    const savedAuth = localStorage.getItem('db_auth');
+    const savedServer = localStorage.getItem('db_server');
+    if (savedAuth) {
+      AUTH = savedAuth;
+      _serverAuthHeader = savedAuth;
+      if (savedServer) SERVER = savedServer;
+    } else {
+      // Sem auth salvo — modo somente leitura (botões funcionam pela página do servidor)
+      AUTH = 'server-injected';
+      _serverAuthHeader = '';
+    }
     const b = window.__SERVER_BOOTSTRAP__;
-    // Dados já estão no servidor — renderizar tabela de usuários direto do HTML injetado
     if (b.rows) renderUsersFromServerRows(b.rows);
     if (b.stats) renderStatsFromServer(b.stats);
     if (b.productsJson) {
       _serverProducts = Array.isArray(b.productsJson) ? b.productsJson : [];
-      // Sincronizar produtos locais com os do servidor
-      // IMPORTANTE: usar nomes MAIÚSCULOS para compatibilidade com PRODUCT_ID_MAP
       if (_serverProducts.length > 0) {
         const mapped = _serverProducts.map((p,i) => ({
           id: i+1,
-          name: p.name.toUpperCase(), // garante compatibilidade com PRODUCT_ID_MAP
+          name: p.name.toUpperCase(),
           type: p.type||'ea',
           description: p.description||'',
           active: p.active!==false,
-          serverId: p.id // guardar o ID real do servidor
+          serverId: p.id
         }));
         saveProducts(mapped);
       }
     }
     renderProductsTable();
     loadProductsDropdown('#mProduct');
-    // Auth não é necessário quando servido pelo servidor
-    AUTH = AUTH || 'server-injected';
   } else {
+    // Modo local: arquivo aberto diretamente no browser
+    _serverMode = false;
     renderProductsTable();
     renderUsersTable();
     updateStats();
     loadProductsDropdown('#mProduct');
     checkCredentials();
-    if (AUTH) await loadServerProducts();
+    if (AUTH) {
+      _serverAuthHeader = AUTH;
+      _serverMode = true;
+      await loadServerProducts();
+      // Carregar usuários do servidor
+      await refreshUsersTable();
+    }
   }
 
   const defaultDate = new Date();
@@ -983,35 +1003,33 @@ window.onclick = function(event) {
 
 // ── Atualizar tabela de usuários sem recarregar a página ──────────
 async function refreshUsersTable() {
-  try {
-    // Buscar dados atualizados do servidor
-    const r = await fetch(SERVER + '/admin', { headers: { 'Authorization': AUTH } });
-    if (r.ok) {
-      const html = await r.text();
-      // Extrair tbody
-      const match = html.match(/<tbody>([\s\S]*?)<\/tbody>/);
-      if (match && match[1]) {
-        document.getElementById('usersTable').innerHTML = match[1];
-      }
-      // Extrair stats
-      const nums = html.match(/>(\d+)<\/div><div class="[ln]"/g);
-      const statsMatch = html.match(/id="(total|premium|trial|expired|active)-users">(\d+)</g);
-      if (statsMatch) {
-        statsMatch.forEach(m => {
-          const id = m.match(/id="([^"]+)">(\d+)/);
-          if (id) {
-            const el = document.getElementById(id[1]);
-            if (el) el.textContent = id[2];
-          }
+  if (_serverMode && _serverAuthHeader) {
+    // Buscar tabela atualizada direto do servidor
+    try {
+      const r = await fetch(SERVER + '/admin', { headers: { 'Authorization': _serverAuthHeader } });
+      if (r.ok) {
+        const html = await r.text();
+        // Extrair tbodies — pegar o segundo (usuários, não produtos)
+        const tbodies = [...html.matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)];
+        if (tbodies.length >= 2) {
+          document.getElementById('usersTable').innerHTML = tbodies[1][1];
+        } else if (tbodies.length === 1) {
+          document.getElementById('usersTable').innerHTML = tbodies[0][1];
+        }
+        // Atualizar stats
+        ['total','premium','trial','expired','active'].forEach(k => {
+          const m = html.match(new RegExp('id="'+k+'-users">(\\d+)'));
+          if (m) { const el=document.getElementById(k+'-users'); if(el) el.textContent=m[1]; }
         });
+        return;
       }
-    }
-  } catch(e) {
-    console.warn('refreshUsersTable error:', e);
-    // Fallback: atualizar só a tabela local
-    renderUsersTable(); updateStats();
+    } catch(e) { console.warn('refreshUsersTable fetch error:', e); }
   }
+  // Fallback local
+  renderUsersTable(); updateStats();
 }
+
+
 
 // ══════════════════════════════════════════════════════════════════
 //  FUNÇÕES DOS BOTÕES DA TABELA DE USUÁRIOS
