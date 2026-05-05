@@ -307,7 +307,7 @@ function showMsg(id, txt, ok) {
   el.textContent = txt;
   el.className = 'msg ' + (ok ? 'ok' : 'err');
   el.style.display = 'block';
-  setTimeout(function() { el.style.display = 'none'; }, 5000);
+  if (ok) setTimeout(function() { el.style.display = 'none'; }, 4000);
 }
 
 function showConfigOverlay() {
@@ -400,18 +400,21 @@ async function loadServerProds() {
 
 async function loadUsersTable() {
   try {
-    var res = await fetch(SERVER + '/admin', { headers: { 'Authorization': AUTH } });
-    if (!res.ok) return;
+    var rj = await api("GET", "/admin/users-json");
+    if (rj && rj.users) { renderUsersFromData(rj.users, rj.stats); return; }
+    var res = await fetch(SERVER + "/admin", { headers: { "Authorization": AUTH } });
+    if (!res.ok) { console.warn("loadUsersTable HTTP " + res.status); return; }
     var html = await res.text();
     var m = html.match(/id="usersTable"[^>]*>([\s\S]*?)<\/tbody>/);
-    if (m) document.getElementById('usersTable').innerHTML = m[1];
-    var smap = {total:'total-users',premium:'premium-users',trial:'trial-users',expired:'expired-users',active:'active-users'};
+    if (m) document.getElementById("usersTable").innerHTML = m[1];
+    var smap = {total:"total-users",premium:"premium-users",trial:"trial-users",expired:"expired-users",active:"active-users"};
     Object.keys(smap).forEach(function(k) {
-      var sm = html.match(new RegExp('id="'+smap[k]+'">(\\d+)'));
+      var sm = html.match(new RegExp("id=\""+smap[k]+"\">(\\d+)"));
       if (sm) { var el=document.getElementById(smap[k]); if(el) el.textContent=sm[1]; }
     });
-  } catch(e) { console.warn('loadUsersTable:', e); }
+  } catch(e) { console.warn("loadUsersTable error:", e.message); }
 }
+
 
 // ── Tabela produtos ───────────────────────────────────────────────
 function renderProductsTable() {
@@ -596,10 +599,14 @@ async function saveUser() {
     } else {
       var serverProds=ps.map(function(p){return {productId:p.sid,accountType:p.type,accountReal:p.type==='real'?acct:'',accountDemo:p.type==='demo'?acct:'',minLots:p.minL,maxLots:p.maxL,instances:p.inst};});
       var r=await api('POST','/admin/register',{account:acct,name:name,email:email,phone:phone,products:serverProds,endDate:ps[0].exp});
-      if (!r||!r.ok) {
-        var errDetail = (r&&r.error) ? r.error : (r ? JSON.stringify(r) : 'Sem resposta do servidor');
+      if (!r) {
+        showMsg('modalMsg','Sem resposta do servidor ao registrar conta '+acct+'. Verifique o console.',false);
+        return;
+      }
+      if (!r.ok) {
+        var errDetail = r.error || JSON.stringify(r);
         showMsg('modalMsg','Erro na conta '+acct+': '+errDetail,false);
-        console.error('Register error:', r);
+        console.error('Register error response:', r);
         return;
       }
     }
@@ -622,7 +629,7 @@ function editUser(acct, name, email, phone) {
   document.getElementById('userModalTitle').textContent = 'Editar Usuario';
   document.getElementById('userModalButton').textContent = 'Salvar Alteracoes';
   document.getElementById('uId').value    = acct;
-  document.getElementById('uName').value  = (name||'').replace(/\\'/g,"'");
+  try { document.getElementById('uName').value = decodeURIComponent(name||''); } catch(e) { document.getElementById('uName').value = name||''; }
   document.getElementById('uEmail').value = email||'';
   document.getElementById('uPhone').value = phone||'';
   var c=document.getElementById('productsContainer');
