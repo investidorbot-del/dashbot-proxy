@@ -77,9 +77,13 @@ async function getLics(){
 }
 async function saveLics(lics){
   return new Promise(resolve=>{
-    jbReq('PUT',LICENSE_BIN,{licenses:lics},(err,code)=>{
-      if(!err&&code===200){licenseCache=lics;lastLicLoad=Date.now();}
-      resolve(!err&&code===200);
+    jbReq('PUT',LICENSE_BIN,{licenses:lics},(err,code,data)=>{
+      if(!err&&code===200){licenseCache=lics;lastLicLoad=Date.now();resolve(true);}
+      else{
+        const errMsg=err?err.message:('JSONBin HTTP '+code+(data?' - '+String(data).substring(0,100):''));
+        console.error('[saveLics] falhou:',errMsg);
+        resolve(false);
+      }
     });
   });
 }
@@ -454,7 +458,11 @@ http.createServer(async(req,res)=>{
         premiumEnd,firstSeen:(existing&&existing.firstSeen)||now,lastSeen:(existing&&existing.lastSeen)||0,
         products:initProds};
       const ok=await saveLics(lics);
-      sendJSON(res,ok?200:500,{ok,account:key,updated:!!existing});return;
+      if(!ok){
+        sendJSON(res,500,{ok:false,error:'Falha ao salvar no banco (JSONBin). Verifique JSONBIN_LICENSE_BIN e JSONBIN_MASTER_KEY nas variaveis de ambiente do Render.'});
+        return;
+      }
+      sendJSON(res,200,{ok:true,account:key,updated:!!existing});return;
     }
 
     if(reqPath==='/admin/license'&&method==='POST'){
