@@ -981,6 +981,276 @@ function renderStatsFromServer(stats) {
 window.onclick = function(event) {
   if (event.target.className === 'modal') closeUserModal();
 };
+
+// ══════════════════════════════════════════════════════════════════
+//  FUNÇÕES DOS BOTÕES DA TABELA DE USUÁRIOS
+//  (chamadas pelas rows geradas pelo servidor via __SERVER_BOOTSTRAP__)
+// ══════════════════════════════════════════════════════════════════
+
+// ── ✏️ Editar usuário ─────────────────────────────────────────────
+function editUser(acct, name, email, phone) {
+  let modal = document.getElementById('editUserModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'editUserModal'; modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width:500px">
+        <div class="modal-header">
+          <h3 class="modal-title">✏️ Editar Usuário</h3>
+          <span class="close" onclick="document.getElementById('editUserModal').style.display='none'">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div id="msgEdit" class="msg"></div>
+          <input type="hidden" id="eAcct">
+          <div class="form-row" style="margin-bottom:8px">
+            <div class="fg" style="width:100%"><label>Nome</label>
+              <input type="text" id="eName" style="width:100%">
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom:8px">
+            <div class="fg" style="width:100%"><label>E-mail</label>
+              <input type="email" id="eEmail" style="width:100%">
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom:14px">
+            <div class="fg" style="width:100%"><label>Telefone</label>
+              <input type="tel" id="ePhone" style="width:100%">
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn-sm" onclick="document.getElementById('editUserModal').style.display='none'">Cancelar</button>
+            <button class="btn btn-green" onclick="saveEdit()">✓ Salvar</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+  document.getElementById('eAcct').value  = acct;
+  document.getElementById('eName').value  = name  || '';
+  document.getElementById('eEmail').value = email || '';
+  document.getElementById('ePhone').value = phone || '';
+  modal.style.display = 'block';
+}
+
+async function saveEdit() {
+  const acct  = document.getElementById('eAcct').value;
+  const name  = document.getElementById('eName').value.trim();
+  const email = document.getElementById('eEmail').value.trim();
+  const phone = document.getElementById('ePhone').value.trim();
+  const r = await apiCall('PUT', '/admin/user', { account: acct, name, email, phone });
+  if (r && r.ok) {
+    showMsg('msgEdit', '✅ Salvo!', true);
+    setTimeout(() => { document.getElementById('editUserModal').style.display='none'; location.reload(); }, 1000);
+  } else {
+    showMsg('msgEdit', '❌ Erro: ' + (r?.error||''), false);
+  }
+}
+
+// ── 📅 Licença (bonus/extensão) ───────────────────────────────────
+let _bonusAcct = '';
+function bonusModal(acct, name) {
+  _bonusAcct = acct;
+  let modal = document.getElementById('bonusUserModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'bonusUserModal'; modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width:480px">
+        <div class="modal-header">
+          <h3 class="modal-title">📅 Gerenciar Licença</h3>
+          <span class="close" onclick="document.getElementById('bonusUserModal').style.display='none'">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div id="msgBonus" class="msg"></div>
+          <div class="form-row" style="margin-bottom:8px">
+            <div class="fg" style="flex:1"><label>Nome</label><input type="text" id="bName" style="width:100%"></div>
+          </div>
+          <div class="form-row" style="margin-bottom:8px">
+            <div class="fg"><label>Atalhos</label>
+              <div style="display:flex;gap:4px">
+                <button class="btn-sm" onclick="bonusAddDays(7)">+7d</button>
+                <button class="btn-sm" onclick="bonusAddDays(15)">+15d</button>
+                <button class="btn-sm" onclick="bonusAddDays(30)">+30d</button>
+                <button class="btn-sm" onclick="bonusAddDays(90)">+3m</button>
+                <button class="btn-sm" onclick="bonusAddDays(180)">+6m</button>
+                <button class="btn-sm" onclick="bonusAddDays(365)">+1a</button>
+              </div>
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom:14px">
+            <div class="fg"><label>Data Final</label><input type="date" id="bDate" style="width:160px"></div>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn-sm" onclick="document.getElementById('bonusUserModal').style.display='none'">Cancelar</button>
+            <button class="btn btn-green" style="background:#7c3aed" onclick="saveLicLifetime()">♾ Vitalícia</button>
+            <button class="btn btn-green" onclick="saveBonus()">✓ Salvar</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+  document.getElementById('bName').value = name || '';
+  const def = new Date(); def.setDate(def.getDate()+30);
+  document.getElementById('bDate').value = def.toISOString().split('T')[0];
+  modal.style.display = 'block';
+}
+
+function bonusAddDays(n) {
+  const el = document.getElementById('bDate');
+  const base = el.value ? new Date(el.value+'T00:00:00') : new Date();
+  base.setDate(base.getDate()+n);
+  el.value = base.toISOString().split('T')[0];
+}
+
+async function saveBonus() {
+  const endDate = document.getElementById('bDate').value;
+  const name    = document.getElementById('bName').value.trim();
+  if (!endDate) { showMsg('msgBonus','❌ Selecione uma data',false); return; }
+  const r = await apiCall('POST','/admin/license',{account:_bonusAcct,name,endDate});
+  if (r && r.ok) {
+    showMsg('msgBonus','✅ Até '+r.expiresStr,true);
+    setTimeout(()=>{document.getElementById('bonusUserModal').style.display='none';location.reload();},1200);
+  } else showMsg('msgBonus','❌ '+(r?.error||'Erro'),false);
+}
+
+async function saveLicLifetime() {
+  const name = document.getElementById('bName').value.trim();
+  const r = await apiCall('POST','/admin/license',{account:_bonusAcct,name,lifetime:true});
+  if (r && r.ok) {
+    showMsg('msgBonus','✅ Licença Vitalícia aplicada!',true);
+    setTimeout(()=>{document.getElementById('bonusUserModal').style.display='none';location.reload();},1200);
+  } else showMsg('msgBonus','❌ '+(r?.error||'Erro'),false);
+}
+
+// ── 🚫 Revogar licença ────────────────────────────────────────────
+async function revogar(acct) {
+  if (!confirm('Revogar licença de '+acct+'?')) return;
+  const r = await apiCall('DELETE','/admin/license',{account:acct});
+  if (r && r.ok) {
+    showMsg('msg2','✅ Licença revogada!',true);
+    setTimeout(()=>location.reload(),1000);
+  } else showMsg('msg2','❌ Erro ao revogar',false);
+}
+
+// ── ↺ Resetar senha ───────────────────────────────────────────────
+async function resetPw(acct) {
+  if (!confirm('Resetar senha de '+acct+'?')) return;
+  const r = await apiCall('POST','/admin/reset-password',{account:acct});
+  if (r && r.ok) alert('✅ Senha resetada!');
+  else alert('❌ Erro ao resetar');
+}
+
+// ── 🗑 Excluir usuário (por conta MT5) ───────────────────────────
+async function delUser(acct) {
+  if (!confirm('⚠️ Remover COMPLETAMENTE o usuário '+acct+'?\nEsta ação não pode ser desfeita.')) return;
+  const r = await apiCall('DELETE','/admin/user',{account:String(acct)});
+  if (r && r.ok) {
+    showMsg('msg2','✅ Usuário '+acct+' removido!',true);
+    // Limpar localStorage local também
+    const lics = getLicenses().filter(l => String(l.account) !== String(acct));
+    saveLicenses(lics);
+    setTimeout(()=>location.reload(),1000);
+  } else {
+    showMsg('msg2','❌ Erro ao remover: '+(r?.error||'Servidor indisponível'),false);
+  }
+}
+
+// ── 📦 Atribuir produto ───────────────────────────────────────────
+let _prodAcctServer = '';
+function addUserProd(acct) {
+  _prodAcctServer = acct;
+  let modal = document.getElementById('addProdModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'addProdModal'; modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width:600px">
+        <div class="modal-header">
+          <h3 class="modal-title">📦 Atribuir Produto</h3>
+          <span class="close" onclick="document.getElementById('addProdModal').style.display='none'">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div id="msgProd" class="msg"></div>
+          <div class="form-row" style="margin-bottom:8px">
+            <div class="fg" style="flex:2"><label>Conta MT5</label>
+              <input type="text" id="pAcctDisp" style="width:100%;opacity:.7" readonly>
+            </div>
+            <div class="fg" style="flex:3"><label>Produto *</label>
+              <select id="pProdSel" style="width:100%">
+                <option value="">Selecione...</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom:8px">
+            <div class="fg" style="width:90px"><label>Tipo</label>
+              <select id="pAcctType">
+                <option value="demo">Demo</option>
+                <option value="real">Real</option>
+              </select>
+            </div>
+            <div class="fg" style="width:80px"><label>Lote Mín</label>
+              <input type="number" id="pMinL" value="0" step="0.01" min="0">
+            </div>
+            <div class="fg" style="width:80px"><label>Lote Máx</label>
+              <input type="number" id="pMaxL" value="0" step="0.01" min="0">
+            </div>
+            <div class="fg" style="width:75px"><label>Instâncias</label>
+              <input type="number" id="pInst" value="1" min="1">
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom:14px">
+            <div class="fg" style="flex:1"><label>Conta Real MT5</label>
+              <input type="text" id="pReal" placeholder="opcional">
+            </div>
+            <div class="fg" style="flex:1"><label>Conta Demo MT5</label>
+              <input type="text" id="pDemo" placeholder="opcional">
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn-sm" onclick="document.getElementById('addProdModal').style.display='none'">Cancelar</button>
+            <button class="btn btn-green" onclick="saveProd()">✓ Atribuir</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+  // Preencher conta e popular dropdown de produtos do servidor
+  document.getElementById('pAcctDisp').value = acct;
+  document.getElementById('pReal').value = '';
+  document.getElementById('pDemo').value = '';
+  const sel = document.getElementById('pProdSel');
+  sel.innerHTML = '<option value="">Selecione...</option>';
+  // Usar produtos do servidor se disponíveis, senão usar locais
+  const prods = _serverProducts.length > 0 ? _serverProducts : getProducts().map(p=>({id:toServerId(p.id)||p.id, name:p.name}));
+  prods.forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.id; o.textContent = p.name;
+    sel.appendChild(o);
+  });
+  modal.style.display = 'block';
+}
+
+async function saveProd() {
+  const pid  = document.getElementById('pProdSel').value;
+  const acct = _prodAcctServer;
+  const type = document.getElementById('pAcctType').value;
+  if (!pid) { showMsg('msgProd','❌ Selecione um produto',false); return; }
+  const prod = _serverProducts.find(p=>p.id===pid);
+  const r = await apiCall('POST','/admin/user-product',{
+    account:acct, productId:pid,
+    name: prod?prod.name:pid,
+    accountType: type,
+    minLots:   parseFloat(document.getElementById('pMinL').value)||0,
+    maxLots:   parseFloat(document.getElementById('pMaxL').value)||0,
+    instances: parseInt(document.getElementById('pInst').value)||1,
+    accountReal: document.getElementById('pReal').value||'',
+    accountDemo: document.getElementById('pDemo').value||''
+  });
+  if (r && r.ok) {
+    showMsg('msgProd','✅ Produto atribuído!',true);
+    setTimeout(()=>{document.getElementById('addProdModal').style.display='none';location.reload();},1000);
+  } else showMsg('msgProd','❌ '+(r?.error||'Erro'),false);
+}
 </script>
 </body>
 </html>
