@@ -1,28 +1,21 @@
-// ─────────────────────────────────────────────────────────────────
-//  Dashbot Server v3 — Auth + Licenças + Produtos
-//  Deploy: https://render.com
-// ─────────────────────────────────────────────────────────────────
+'use strict';
 const https  = require('https');
 const http   = require('http');
 const crypto = require('crypto');
 const fs     = require('fs');
 const path   = require('path');
 
-const PORT        = process.env.PORT               || 3000;
-const MASTER_KEY  = process.env.JSONBIN_MASTER_KEY || '';
-const DATA_BIN    = process.env.JSONBIN_DATA_BIN   || '';
-const CMD_BIN     = process.env.JSONBIN_CMD_BIN    || '';
-const LICENSE_BIN = process.env.JSONBIN_LICENSE_BIN|| '';
-const AUTH_BIN    = process.env.JSONBIN_AUTH_BIN   || '';
-const PROXY_TOKEN = process.env.DASHBOT_TOKEN      || 'dashbot2024';
-const ADMIN_USER  = process.env.ADMIN_USER         || 'admin';
-const ADMIN_PASS  = process.env.ADMIN_PASS         || 'admin123';
-const OFFLINE_SECRET = process.env.OFFLINE_SECRET  || 'dashbot_offline_secret_2024';
+// ── Configuração ──────────────────────────────────────────────────
+const PORT         = process.env.PORT          || 3000;
+const MONGO_URI    = process.env.MONGO_URI     || '';
+const PROXY_TOKEN  = process.env.DASHBOT_TOKEN || 'dashbot2024';
+const ADMIN_USER   = process.env.ADMIN_USER    || 'admin';
+const ADMIN_PASS   = process.env.ADMIN_PASS    || 'admin123';
+const OFFLINE_SECRET = process.env.OFFLINE_SECRET || 'dashbot_offline_secret_2024';
 
 const TRIAL_DAYS = 14;
 const DAY_MS     = 86400000;
 
-// ── Produtos fixos do ecossistema Dashbot ─────────────────────────
 const DEFAULT_PRODUCTS = [
   {id:'prod_1000000007',name:'Dashbot', type:'dashboard',description:'Painel de monitoramento',  minLots:0,maxLots:0,instances:1,active:true},
   {id:'prod_1000000001',name:'Hulk',    type:'ea',       description:'Expert Advisor Hulk',       minLots:0,maxLots:0,instances:1,active:true},
@@ -33,172 +26,289 @@ const DEFAULT_PRODUCTS = [
   {id:'prod_1000000006',name:'Iron',    type:'ea',       description:'Expert Advisor Iron Robot', minLots:0,maxLots:0,instances:1,active:true},
 ];
 
-// ── Helpers ───────────────────────────────────────────────────────
-function hashPw(pw){return crypto.createHash('sha256').update(pw+'dashbot_salt_2024').digest('hex');}
-function genToken(account){return crypto.createHash('sha256').update(account+'_'+Date.now()+'_'+Math.random()).digest('hex');}
-function ptDate(ms){return new Date(ms).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});}
+// ── MongoDB ───────────────────────────────────────────────────────
+let db = null; // MongoDB database instance
 
-// ── Cache ─────────────────────────────────────────────────────────
-let licenseCache={}; let lastLicLoad=0;
-let authCache={}; let lastAuthLoad=0;
-const CACHE_TTL=20000;
-
-// ── JSONBin ───────────────────────────────────────────────────────
-function jbReq(method,binId,body,cb){
-  if(!binId){cb(new Error('No binId'),-1,'');return;}
-  const bodyStr=body?JSON.stringify(body):null;
-  const opts={hostname:'api.jsonbin.io',port:443,
-    path:'/v3/b/'+encodeURIComponent(binId).replace(/%2F/g,'/')+(method==='GET'?'/latest':''),
-    method,headers:{'Content-Type':'application/json','X-Master-Key':MASTER_KEY,'X-Bin-Meta':'false'}};
-  if(bodyStr) opts.headers['Content-Length']=Buffer.byteLength(bodyStr);
-  const req=https.request(opts,res=>{let d='';res.on('data',c=>d+=c);res.on('end',()=>cb(null,res.statusCode,d));});
-  req.on('error',err=>cb(err,-1,''));
-  if(bodyStr) req.write(bodyStr);
-  req.end();
-}
-function readBody(req){return new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});}
-
-async function getLics(){
-  return new Promise(resolve=>{
-    if(!LICENSE_BIN){resolve({});return;}
-    const now=Date.now();
-    if(now-lastLicLoad<CACHE_TTL){resolve(licenseCache);return;}
-    jbReq('GET',LICENSE_BIN,null,(err,code,data)=>{
-      if(!err&&code===200)try{const p=JSON.parse(data);licenseCache=p.licenses||{};lastLicLoad=now;}catch(e){}
-      // Garantir produtos padrão sempre presentes
-      if(!licenseCache._products) licenseCache._products=[];
-      DEFAULT_PRODUCTS.forEach(dp=>{
-        if(!licenseCache._products.find(p=>p.id===dp.id))
-          licenseCache._products.push({...dp,createdAt:Date.now()});
-      });
-      resolve(licenseCache);
-    });
-  });
-}
-async function saveLics(lics){
-  return new Promise(resolve=>{
-    jbReq('PUT',LICENSE_BIN,{licenses:lics},(err,code,data)=>{
-      if(!err&&code===200){licenseCache=lics;lastLicLoad=Date.now();resolve(true);}
-      else{
-        const errMsg=err?err.message:('JSONBin HTTP '+code+(data?' - '+String(data).substring(0,100):''));
-        console.error('[saveLics] falhou:',errMsg);
-        resolve(false);
-      }
-    });
-  });
-}
-async function getAuth(){
-  return new Promise(resolve=>{
-    if(!AUTH_BIN){if(!authCache.users)authCache.users={};if(!authCache.tokens)authCache.tokens={};resolve(authCache);return;}
-    const now=Date.now();
-    if(now-lastAuthLoad<CACHE_TTL){resolve(authCache);return;}
-    jbReq('GET',AUTH_BIN,null,(err,code,data)=>{
-      if(!err&&code===200)try{const p=JSON.parse(data);authCache=p.auth||{};lastAuthLoad=now;}catch(e){}
-      if(!authCache.users) authCache.users={};
-      if(!authCache.tokens) authCache.tokens={};
-      resolve(authCache);
-    });
-  });
-}
-async function saveAuth(db){
-  return new Promise(resolve=>{
-    if(!AUTH_BIN){authCache=db;resolve(true);return;}
-    jbReq('PUT',AUTH_BIN,{auth:db},(err,code)=>{
-      if(!err&&code===200){authCache=db;lastAuthLoad=Date.now();}
-      resolve(!err&&code===200);
-    });
-  });
-}
-
-function checkLic(lic){
-  const now=Date.now();
-  if(!lic) return{valid:false,plan:'none',expired:true};
-  if(lic.type==='lifetime') return{valid:true,plan:'lifetime',daysLeft:99999};
-  if(lic.type==='premium'){
-    if(lic.premiumEnd&&now<lic.premiumEnd)
-      return{valid:true,plan:'premium',daysLeft:Math.ceil((lic.premiumEnd-now)/DAY_MS)};
-    return{valid:false,plan:'expired',expired:true};
+async function connectMongo() {
+  if (!MONGO_URI) {
+    console.warn('[MongoDB] MONGO_URI não configurado — usando armazenamento em memória');
+    return false;
   }
-  const trialEnd=lic.trialEnd||((lic.trialStart||now)+TRIAL_DAYS*DAY_MS);
-  if(now<trialEnd) return{valid:true,plan:'trial',daysLeft:Math.ceil((trialEnd-now)/DAY_MS)};
-  return{valid:false,plan:'expired',expired:true};
+  try {
+    const { MongoClient } = require('mongodb');
+    const client = new MongoClient(MONGO_URI, { serverSelectionTimeoutMS: 5000 });
+    await client.connect();
+    db = client.db('dashbot');
+    // Criar índices
+    await db.collection('licenses').createIndex({ account: 1 }, { unique: true });
+    await db.collection('auth').createIndex({ key: 1 }, { unique: true });
+    await db.collection('cmd').createIndex({ key: 1 }, { unique: true });
+    console.log('[MongoDB] Conectado com sucesso');
+    // Garantir produtos padrão
+    await ensureProducts();
+    return true;
+  } catch(e) {
+    console.error('[MongoDB] Erro de conexão:', e.message);
+    return false;
+  }
 }
 
-async function verifySession(token){
-  if(!token) return null;
-  const db=await getAuth();
-  for(const k of Object.keys(db.tokens||{})){
-    const t=db.tokens[k];
-    if(t.token===token&&t.type==='session'&&t.expires>Date.now()) return t;
+async function ensureProducts() {
+  if (!db) return;
+  const col = db.collection('products');
+  for (const p of DEFAULT_PRODUCTS) {
+    await col.updateOne({ id: p.id }, { $setOnInsert: p }, { upsert: true });
+  }
+}
+
+// ── Cache em memória (fallback e performance) ─────────────────────
+let _licsCache = null;
+let _licsTime  = 0;
+let _authCache = { users: {}, tokens: {} };
+const CACHE_TTL = 300000; // 5 minutos
+
+// ── Operações de licença ──────────────────────────────────────────
+async function getLics() {
+  if (_licsCache && Date.now() - _licsTime < CACHE_TTL) return _licsCache;
+  if (!db) return _licsCache || { _products: DEFAULT_PRODUCTS };
+  try {
+    const docs = await db.collection('licenses').find({}).toArray();
+    const lics = { _products: [] };
+    docs.forEach(doc => {
+      const { _id, ...rest } = doc;
+      lics[doc.account] = rest;
+    });
+    // Produtos do catálogo
+    const prods = await db.collection('products').find({}).toArray();
+    lics._products = prods.map(({ _id, ...p }) => p);
+    if (!lics._products.length) lics._products = DEFAULT_PRODUCTS;
+    _licsCache = lics;
+    _licsTime  = Date.now();
+    return lics;
+  } catch(e) {
+    console.error('[getLics]', e.message);
+    return _licsCache || { _products: DEFAULT_PRODUCTS };
+  }
+}
+
+async function saveLics(lics) {
+  _licsCache = lics;
+  _licsTime  = Date.now();
+  if (!db) return true;
+  try {
+    const ops = [];
+    for (const [key, val] of Object.entries(lics)) {
+      if (key === '_products') continue;
+      ops.push({
+        updateOne: {
+          filter: { account: key },
+          update: { $set: { ...val, account: key } },
+          upsert: true
+        }
+      });
+    }
+    if (ops.length) await db.collection('licenses').bulkWrite(ops);
+    return true;
+  } catch(e) {
+    console.error('[saveLics]', e.message);
+    return false;
+  }
+}
+
+async function deleteLic(account) {
+  if (!db) return true;
+  try {
+    await db.collection('licenses').deleteOne({ account });
+    if (_licsCache) delete _licsCache[account];
+    return true;
+  } catch(e) { return false; }
+}
+
+// ── Auth ──────────────────────────────────────────────────────────
+async function getAuth() {
+  if (!db) return _authCache;
+  try {
+    const doc = await db.collection('auth').findOne({ key: 'main' });
+    if (doc) { const { _id, key, ...rest } = doc; _authCache = rest; }
+    if (!_authCache.users)  _authCache.users  = {};
+    if (!_authCache.tokens) _authCache.tokens = {};
+    return _authCache;
+  } catch(e) { return _authCache; }
+}
+
+async function saveAuth(data) {
+  _authCache = data;
+  if (!db) return true;
+  try {
+    await db.collection('auth').updateOne(
+      { key: 'main' },
+      { $set: { key: 'main', ...data } },
+      { upsert: true }
+    );
+    return true;
+  } catch(e) { console.error('[saveAuth]', e.message); return false; }
+}
+
+// ── CMD (comandos DashBot) ────────────────────────────────────────
+async function getCmd() {
+  if (!db) return { cmd: 'none' };
+  try {
+    const doc = await db.collection('cmd').findOne({ key: 'main' });
+    return doc ? { cmd: doc.cmd || 'none' } : { cmd: 'none' };
+  } catch(e) { return { cmd: 'none' }; }
+}
+
+async function saveCmd(payload) {
+  if (!db) return true;
+  try {
+    await db.collection('cmd').updateOne(
+      { key: 'main' },
+      { $set: { key: 'main', ...payload } },
+      { upsert: true }
+    );
+    return true;
+  } catch(e) { return false; }
+}
+
+// ── Produtos ──────────────────────────────────────────────────────
+async function getProducts() {
+  if (!db) return DEFAULT_PRODUCTS;
+  try {
+    const prods = await db.collection('products').find({}).toArray();
+    return prods.length ? prods.map(({ _id, ...p }) => p) : DEFAULT_PRODUCTS;
+  } catch(e) { return DEFAULT_PRODUCTS; }
+}
+
+async function saveProduct(prod) {
+  if (!db) return true;
+  try {
+    await db.collection('products').updateOne(
+      { id: prod.id },
+      { $set: prod },
+      { upsert: true }
+    );
+    return true;
+  } catch(e) { return false; }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────
+function hashPw(pw)     { return crypto.createHash('sha256').update(pw+'dashbot_salt_2024').digest('hex'); }
+function genToken(acct) { return crypto.createHash('sha256').update(acct+'_'+Date.now()+'_'+Math.random()).digest('hex'); }
+function ptDate(ms)     { return new Date(ms).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}); }
+
+function checkLic(lic) {
+  const now = Date.now();
+  if (!lic) return { valid:false, plan:'none', expired:true };
+  if (lic.type === 'lifetime') return { valid:true, plan:'lifetime', daysLeft:99999 };
+  if (lic.type === 'premium') {
+    if (lic.premiumEnd && now < lic.premiumEnd)
+      return { valid:true, plan:'premium', daysLeft:Math.ceil((lic.premiumEnd-now)/DAY_MS) };
+    return { valid:false, plan:'expired', expired:true };
+  }
+  if (lic.type === 'revoked') return { valid:false, plan:'revoked', expired:true };
+  const trialEnd = lic.trialEnd || ((lic.trialStart||now) + TRIAL_DAYS*DAY_MS);
+  if (now < trialEnd) return { valid:true, plan:'trial', daysLeft:Math.ceil((trialEnd-now)/DAY_MS) };
+  return { valid:false, plan:'expired', expired:true };
+}
+
+async function verifySession(token) {
+  if (!token) return null;
+  const auth = await getAuth();
+  for (const k of Object.keys(auth.tokens||{})) {
+    const t = auth.tokens[k];
+    if (t.token===token && t.type==='session' && t.expires>Date.now()) return t;
   }
   return null;
 }
 
-const CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'GET,POST,PUT,DELETE,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization,X-Dashbot-Token,X-Auth-Token'};
-function sendJSON(res,code,obj){const b=JSON.stringify(obj);res.writeHead(code,{...CORS,'Content-Type':'application/json','Content-Length':Buffer.byteLength(b)});res.end(b);}
-function sendHTML(res,html){res.writeHead(200,{...CORS,'Content-Type':'text/html;charset=utf-8'});res.end(html);}
-function adminAuth(req){const a=req.headers['authorization']||'';if(!a.startsWith('Basic '))return false;const[u,p]=Buffer.from(a.slice(6),'base64').toString().split(':');return u===ADMIN_USER&&p===ADMIN_PASS;}
+function readBody(req) {
+  return new Promise(r => { let b=''; req.on('data',c=>b+=c); req.on('end',()=>r(b)); });
+}
+
+const CORS = {
+  'Access-Control-Allow-Origin':'*',
+  'Access-Control-Allow-Methods':'GET,POST,PUT,DELETE,OPTIONS',
+  'Access-Control-Allow-Headers':'Content-Type,Authorization,X-Dashbot-Token,X-Auth-Token'
+};
+function sendJSON(res,code,obj) {
+  const b=JSON.stringify(obj);
+  res.writeHead(code,{...CORS,'Content-Type':'application/json','Content-Length':Buffer.byteLength(b)});
+  res.end(b);
+}
+function sendHTML(res,html) {
+  res.writeHead(200,{...CORS,'Content-Type':'text/html;charset=utf-8'});
+  res.end(html);
+}
+function adminAuth(req) {
+  const a=req.headers['authorization']||'';
+  if(!a.startsWith('Basic ')) return false;
+  const [u,p]=Buffer.from(a.slice(6),'base64').toString().split(':');
+  return u===ADMIN_USER && p===ADMIN_PASS;
+}
+
+// ── buildAdminHTML ────────────────────────────────────────────────
+function buildAdminHTML(rows,stats,prodRows,productsJson) {
+  const adminFile = path.join(__dirname, 'admin.html');
+  let html;
+  try { html = fs.readFileSync(adminFile,'utf-8'); }
+  catch(e) { return '<h1 style="color:red;padding:20px">admin.html nao encontrado</h1>'; }
+  const bootstrap = '<script id="db-data">window.__ROWS__='+JSON.stringify(rows)+';window.__STATS__='+JSON.stringify(stats)+';window.__PRODS__='+(productsJson||'[]')+';<\/script>';
+  return html.replace('</body>', bootstrap+'\n</body>');
+}
 
 // ── HTTP Server ───────────────────────────────────────────────────
 http.createServer(async(req,res)=>{
-  const parsed=new URL(req.url,'http://localhost');
-  const reqPath=parsed.pathname;
-  const method=req.method.toUpperCase();
-  const qs=parsed.searchParams;
+  const parsed  = new URL(req.url,'http://localhost');
+  const reqPath = parsed.pathname;
+  const qs      = parsed.searchParams;
+  const method  = req.method.toUpperCase();
+
   if(method==='OPTIONS'){res.writeHead(204,CORS);res.end();return;}
 
-  if(reqPath==='/health'||reqPath==='/ping'){sendJSON(res,200,{status:'ok',service:'Dashbot Server v3',ts:Date.now()});return;}
-
-  if(reqPath==='/'||reqPath==='/dashbot'||reqPath==='/dashbot/'){
-    const htmlPath=path.join(__dirname,'dashbot_web.html');
-    if(fs.existsSync(htmlPath)){
-      res.writeHead(200,{...CORS,'Content-Type':'text/html;charset=utf-8','Cache-Control':'no-store'});
-      res.end(fs.readFileSync(htmlPath));
-    }else sendJSON(res,404,{error:'dashbot_web.html not found'});
-    return;
+  if(reqPath==='/health'||reqPath==='/ping'){
+    sendJSON(res,200,{status:'ok',service:'Dashbot Server v3 (MongoDB)',mongo:!!db,ts:Date.now()});return;
   }
 
-  // ════════════════════════════════════════════════════════════════
-  //  /validate-product — Validação Web (EAs/Indicadores)
-  // ════════════════════════════════════════════════════════════════
-  if(reqPath==='/validate-product'){
-    const account=qs.get('account')||'';
-    const productId=qs.get('product')||'';
-    const token=qs.get('token')||'';
-    const accountType=qs.get('type')||''; // 'real' ou 'demo'
+  // ── Status ────────────────────────────────────────────────────
+  if(reqPath==='/status'){
+    sendJSON(res,200,{
+      ok:true,
+      storage: db ? 'MongoDB Atlas' : 'Memoria (configure MONGO_URI)',
+      config:{
+        MONGO_URI: MONGO_URI ? 'configurado' : 'NAO CONFIGURADO',
+        ADMIN_USER, DASHBOT_TOKEN:PROXY_TOKEN
+      },
+      missing: !MONGO_URI ? ['MONGO_URI'] : []
+    });return;
+  }
 
+  // ── validate-product (robô) ───────────────────────────────────
+  if(reqPath==='/validate-product'){
+    const account   = qs.get('account')||'';
+    const productId = qs.get('product')||'';
+    const token     = qs.get('token')||'';
+    const accountType = qs.get('type')||'';
     if(token!==PROXY_TOKEN){sendJSON(res,401,{valid:false,error:'Token inválido'});return;}
     if(!account||!productId){sendJSON(res,400,{valid:false,error:'account e product obrigatórios'});return;}
-
-    lastLicLoad=0;
-    const lics=await getLics();
-    const now=Date.now();
-
-    const catalogProd=lics._products&&lics._products.find(p=>p.id===productId);
-    if(!catalogProd){sendJSON(res,403,{valid:false,error:`Produto "${productId}" não encontrado no catálogo.`});return;}
-    if(catalogProd.active===false){sendJSON(res,403,{valid:false,error:`Produto "${catalogProd.name}" está desativado.`});return;}
-
-    const lic=lics[account];
-    if(!lic){sendJSON(res,403,{valid:false,error:'Conta MT5 '+account+' não encontrada. Adquira uma licença em dashbot.investidorbot.com'});return;}
-
-    const s=checkLic(lic);
-    if(!s.valid){sendJSON(res,403,{valid:false,error:'Licença expirada. Renove em dashbot.investidorbot.com',plan:s.plan});return;}
-
-    const userProds=lic.products||[];
-    const userProd=userProds.find(p=>p.id===productId);
-    if(!userProd){sendJSON(res,403,{valid:false,error:`Produto "${catalogProd.name}" não licenciado para esta conta.`});return;}
-
-    // Verificar tipo de conta (real/demo)
+    const lics = await getLics();
+    const now  = Date.now();
+    const catalogProd = (lics._products||[]).find(p=>p.id===productId);
+    if(!catalogProd){sendJSON(res,403,{valid:false,error:'Produto "'+productId+'" não encontrado.'});return;}
+    if(catalogProd.active===false){sendJSON(res,403,{valid:false,error:'Produto desativado.'});return;}
+    const lic = lics[account];
+    if(!lic){sendJSON(res,403,{valid:false,error:'Conta '+account+' não encontrada. Adquira uma licença em dashbot.investidorbot.com'});return;}
+    const s = checkLic(lic);
+    if(!s.valid){sendJSON(res,403,{valid:false,error:'Licença expirada.',plan:s.plan});return;}
+    const userProd = (lic.products||[]).find(p=>p.id===productId);
+    if(!userProd){sendJSON(res,403,{valid:false,error:'Produto "'+catalogProd.name+'" não licenciado para esta conta.'});return;}
     if(accountType&&userProd.accountType&&userProd.accountType!==accountType){
-      const tipoEsperado=userProd.accountType==='real'?'Real':'Demo';
-      const tipoInformado=accountType==='real'?'Real':'Demo';
-      sendJSON(res,403,{valid:false,error:`Esta licença é para conta ${tipoEsperado}. Você está tentando usar em uma conta ${tipoInformado}. Contate o suporte.`});
-      return;
+      const te=userProd.accountType==='real'?'Real':'Demo';
+      const ta=accountType==='real'?'Real':'Demo';
+      sendJSON(res,403,{valid:false,error:'Licença para conta '+te+'. Você usa conta '+ta+'.'});return;
     }
-
-    lics[account].lastSeen=now;
+    // Atualizar lastSeen
+    lic.lastSeen=now;
     saveLics(lics).catch(()=>{});
-
     sendJSON(res,200,{
       valid:true,plan:s.plan,daysLeft:s.daysLeft,account,productId,
       productName:catalogProd.name,
@@ -208,180 +318,110 @@ http.createServer(async(req,res)=>{
       accountType:userProd.accountType||'',
       accountReal:userProd.accountReal||'',accountDemo:userProd.accountDemo||'',
       premiumEnd:lic.premiumEnd||null,
-      message:`Licença ativa — ${catalogProd.name} — ${s.plan==='lifetime'?'Vitalícia':s.daysLeft+' dias restantes'}`
-    });
-    return;
+      message:'Licença ativa — '+catalogProd.name
+    });return;
   }
 
-  // ════════════════════════════════════════════════════════════════
-  //  /validate-key — Validação Offline por Chave Criptografada
-  // ════════════════════════════════════════════════════════════════
+  // ── validate-key (offline) ────────────────────────────────────
   if(reqPath==='/validate-key'&&method==='POST'){
-    // Apenas para verificação do servidor (o EA valida localmente)
-    const body=await readBody(req);
-    let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{valid:false,error:'JSON inválido'});return;}
-    const{key}=d;
-    if(!key){sendJSON(res,400,{valid:false,error:'key obrigatória'});return;}
+    const body=await readBody(req);let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{valid:false,error:'JSON inválido'});return;}
+    const {account,productId,key,accountType}=d;
+    if(!account||!productId||!key){sendJSON(res,400,{valid:false,error:'Campos obrigatórios'});return;}
     try{
-      const decoded=Buffer.from(key,'base64').toString('utf8');
-      const parts=decoded.split('|');
-      if(parts.length<5){sendJSON(res,400,{valid:false,error:'Chave inválida'});return;}
-      const[prodId,account,accountType,expiry,sig]=parts;
-      const payload=`${prodId}|${account}|${accountType}|${expiry}`;
+      const keyBytes=Buffer.from(key,'base64');const raw=keyBytes.toString('utf8');
+      const parts=raw.split('|');if(parts.length<5){sendJSON(res,400,{valid:false,error:'Chave inválida'});return;}
+      const [kProd,kAcct,kType,expiry,sig]=parts;
+      if(kProd!==productId){sendJSON(res,403,{valid:false,error:'Chave para outro produto'});return;}
+      if(kAcct!==String(account)){sendJSON(res,403,{valid:false,error:'Chave para outra conta'});return;}
+      if(kType!==accountType){sendJSON(res,403,{valid:false,error:'Chave para tipo de conta diferente'});return;}
+      const payload=kProd+'|'+kAcct+'|'+kType+'|'+expiry;
       const expected=crypto.createHmac('sha256',OFFLINE_SECRET).update(payload).digest('hex').substring(0,16);
       if(sig!==expected){sendJSON(res,403,{valid:false,error:'Assinatura inválida'});return;}
-      const expiryDate=new Date(expiry);
-      if(expiry!=='lifetime'&&expiryDate<new Date()){sendJSON(res,403,{valid:false,error:'Chave expirada em '+expiryDate.toLocaleDateString('pt-BR')});return;}
-      sendJSON(res,200,{valid:true,productId:prodId,account,accountType,expiry,lifetime:expiry==='lifetime'});
-    }catch(e){sendJSON(res,500,{valid:false,error:'Erro ao validar chave'});}
+      if(expiry!=='lifetime'){const exp=new Date(expiry+' 23:59:59').getTime();if(Date.now()>exp){sendJSON(res,403,{valid:false,error:'Chave expirada em '+expiry});return;}}
+      const lics=await getLics();const catProd=(lics._products||[]).find(p=>p.id===productId);
+      sendJSON(res,200,{valid:true,plan:expiry==='lifetime'?'lifetime':'premium',account,productId,productName:catProd?catProd.name:productId,minLots:catProd?catProd.minLots:0,maxLots:catProd?catProd.maxLots:0,instances:catProd?catProd.instances:1});
+    }catch(e){sendJSON(res,500,{valid:false,error:e.message});}
     return;
   }
 
-  // ════════════════════════════════════════════════════════════════
-  //  /generate-key — Gerar chave offline (admin only)
-  // ════════════════════════════════════════════════════════════════
-  if(reqPath==='/generate-key'&&method==='POST'){
-    if(!adminAuth(req)){res.writeHead(401,{'WWW-Authenticate':'Basic realm="Dashbot Admin"',...CORS});res.end('Não autorizado');return;}
-    const body=await readBody(req);
-    let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-    const{productId,account,accountType,expiry}=d;
-    if(!productId||!account||!accountType||!expiry){sendJSON(res,400,{error:'Campos obrigatórios: productId, account, accountType, expiry (YYYY-MM-DD ou "lifetime")'});return;}
-    const payload=`${productId}|${account}|${accountType}|${expiry}`;
-    const sig=crypto.createHmac('sha256',OFFLINE_SECRET).update(payload).digest('hex').substring(0,16);
-    const key=Buffer.from(`${payload}|${sig}`).toString('base64');
-    sendJSON(res,200,{ok:true,key,productId,account,accountType,expiry});
-    return;
-  }
-
-  // /validate — compatibilidade com Dashbot dashboard
-  if(reqPath==='/validate'){
-    const account=qs.get('account')||'';
-    if(!account){sendJSON(res,400,{error:'account obrigatório'});return;}
-    lastLicLoad=0;
-    const lics=await getLics();
-    const now=Date.now();let changed=false;
-    let lic=lics[account];
-    if(!lic){lic={account,type:'trial',trialStart:now,trialEnd:now+TRIAL_DAYS*DAY_MS,firstSeen:now,lastSeen:now,products:[]};lics[account]=lic;changed=true;}
-    else{if(lics[account].lastSeen!==now){lics[account].lastSeen=now;changed=true;}}
-    if(!lics[account].products){lics[account].products=[];changed=true;}
-    const dashProd=lics._products&&lics._products.find(p=>p.id==='prod_1000000007');
-    if(dashProd&&!lics[account].products.find(p=>p.id==='prod_1000000007')){lics[account].products.push({id:'prod_1000000007',name:'Dashbot',assignedAt:now});changed=true;}
-    if(changed) await saveLics(lics);
-    const s=checkLic(lics[account]);
-    sendJSON(res,200,{...s,account,trialStart:lic.trialStart,trialEnd:lic.trialEnd||null,premiumEnd:lic.premiumEnd||null});
-    return;
-  }
-
-  // Auth routes
-  if(reqPath==='/auth/check'){
-    const account=qs.get('account')||'';
-    if(!account){sendJSON(res,400,{error:'account obrigatório'});return;}
-    const lics=await getLics();const now=Date.now();
-    if(!lics[account]){lics[account]={account,type:'trial',trialStart:now,trialEnd:now+TRIAL_DAYS*DAY_MS,firstSeen:now,lastSeen:now};await saveLics(lics);}
-    const s=checkLic(lics[account]);
-    if(!s.valid){sendJSON(res,403,{error:'Licença expirada'});return;}
-    const db=await getAuth();
-    const hasPassword=!!(db.users&&db.users[String(account)]&&db.users[String(account)].passwordHash);
-    if(hasPassword){sendJSON(res,200,{hasPassword:true,plan:s.plan});}
-    else{const setupToken=genToken(account);if(!db.tokens)db.tokens={};db.tokens['setup_'+account]={token:setupToken,account,expires:Date.now()+600000,type:'setup'};await saveAuth(db);sendJSON(res,200,{hasPassword:false,setupToken,account,plan:s.plan});}
-    return;
-  }
-  if(reqPath==='/auth/mt5-link'&&method==='POST'){
-    const token=qs.get('token')||'';if(token!==PROXY_TOKEN){sendJSON(res,401,{error:'Token inválido'});return;}
-    const body=await readBody(req);let data;try{data=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-    const{account}=data;if(!account){sendJSON(res,400,{error:'account obrigatório'});return;}
-    const lics=await getLics();const now=Date.now();
-    if(!lics[account]){lics[account]={account,type:'trial',trialStart:now,trialEnd:now+TRIAL_DAYS*DAY_MS,firstSeen:now,lastSeen:now};await saveLics(lics);}
-    const s=checkLic(lics[account]);if(!s.valid){sendJSON(res,403,{error:'Licença expirada',expired:true});return;}
-    const db=await getAuth();const setupToken=genToken(account);if(!db.tokens)db.tokens={};
-    db.tokens['setup_'+account]={token:setupToken,account,expires:Date.now()+600000,type:'setup'};await saveAuth(db);
-    const hasPassword=!!db.users?.[String(account)];
-    sendJSON(res,200,{ok:true,setupToken,account,plan:s.plan,hasPassword});return;
-  }
-  if(reqPath==='/auth/setup-password'&&method==='POST'){
-    const body=await readBody(req);let data;try{data=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-    const{setupToken,password}=data;if(!setupToken||!password){sendJSON(res,400,{error:'Campos obrigatórios'});return;}
-    if(password.length<6){sendJSON(res,400,{error:'Senha mínimo 6 caracteres'});return;}
-    const db=await getAuth();let account=null;
-    for(const k of Object.keys(db.tokens||{})){const t=db.tokens[k];if(t.token===setupToken&&t.type==='setup'&&t.expires>Date.now()){account=t.account;delete db.tokens[k];break;}}
-    if(!account){sendJSON(res,401,{error:'Token inválido ou expirado'});return;}
-    db.users[account]={account,passwordHash:hashPw(password),createdAt:Date.now()};
-    const sessionToken=genToken(account);
-    db.tokens['sess_'+account+'_'+Date.now()]={token:sessionToken,account,expires:Date.now()+30*DAY_MS,type:'session'};
-    await saveAuth(db);const lics=await getLics();const s=checkLic(lics[account]);
-    sendJSON(res,200,{ok:true,sessionToken,account,plan:s.plan,valid:s.valid});return;
-  }
-  if(reqPath==='/auth/login'&&method==='POST'){
-    const body=await readBody(req);let data;try{data=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-    const{account,password}=data;if(!account||!password){sendJSON(res,400,{error:'Campos obrigatórios'});return;}
-    const db=await getAuth();const user=db.users[String(account)];
-    if(!user||user.passwordHash!==hashPw(password)){sendJSON(res,401,{error:'Conta ou senha incorretos'});return;}
-    const lics=await getLics();const s=checkLic(lics[String(account)]);
-    const sessionToken=genToken(account);if(!db.tokens)db.tokens={};
-    db.tokens['sess_'+account+'_'+Date.now()]={token:sessionToken,account:String(account),expires:Date.now()+30*DAY_MS,type:'session'};
-    await saveAuth(db);sendJSON(res,200,{ok:true,sessionToken,account:String(account),plan:s.plan,valid:s.valid,daysLeft:s.daysLeft});return;
-  }
-  if(reqPath==='/auth/verify'){
-    const tok=qs.get('token')||req.headers['x-auth-token']||'';const sess=await verifySession(tok);
-    if(!sess){sendJSON(res,401,{error:'Sessão inválida'});return;}
-    const lics=await getLics();const s=checkLic(lics[sess.account]);
-    sendJSON(res,200,{ok:true,account:sess.account,plan:s.plan,valid:s.valid,daysLeft:s.daysLeft});return;
-  }
-  if(reqPath==='/data'){
-    const tok=qs.get('token')||req.headers['x-auth-token']||'';let sessionAccount=null;
-    if(tok!==PROXY_TOKEN){const sess=await verifySession(tok);if(!sess){sendJSON(res,401,{error:'Não autorizado'});return;}sessionAccount=sess.account;}
-    else sessionAccount=qs.get('account')||null;
-    const serveData=(all)=>{
-      if(!sessionAccount){sendJSON(res,200,all);return;}
-      let acctData=null;
-      if(all&&all[sessionAccount])acctData=all[sessionAccount];
-      else if(all&&all.account===sessionAccount)acctData=all;
-      if(acctData&&acctData.eas)sendJSON(res,200,acctData);
-      else sendJSON(res,200,{eas:[],ts:Date.now(),offline:true,msg:'MT5 desconectado.'});
-    };
-    if(global.dataCache&&Object.keys(global.dataCache).length>0){serveData(global.dataCache);return;}
-    return new Promise(resolve=>{jbReq('GET',DATA_BIN,null,(err,code,rawData)=>{
-      if(err||code!==200){sendJSON(res,200,{eas:[],ts:Date.now(),offline:true,msg:'MT5 desconectado.'});resolve();return;}
-      try{const all=JSON.parse(rawData);if(typeof all==='object'&&!all.eas)global.dataCache=all;serveData(all);}
-      catch(e){sendJSON(res,500,{error:'Parse error'});}resolve();
-    });});
-  }
-  if(reqPath==='/update'&&method==='POST'){
-    const tok=qs.get('token')||'';if(tok!==PROXY_TOKEN){sendJSON(res,401,{error:'Não autorizado'});return;}
-    const body=await readBody(req);let payload;try{payload=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-    const account=String(payload.account||qs.get('account')||'');
-    if(!global.dataCache||typeof global.dataCache!=='object')global.dataCache={};
-    if(account)global.dataCache[account]=payload;else global.dataCache=payload;
-    sendJSON(res,200,{ok:true});
-    jbReq('PUT',DATA_BIN,global.dataCache,(err,code)=>{if(err||code!==200)console.error('JSONBin save error:',err||code);});
-    return;
-  }
+  // ── command (DashBot MQ5) ─────────────────────────────────────
   if(reqPath==='/command'){
     const tok=qs.get('token')||req.headers['x-auth-token']||'';
     if(tok!==PROXY_TOKEN){const sess=await verifySession(tok);if(!sess){sendJSON(res,401,{error:'Não autorizado'});return;}}
-    if(method==='GET')return new Promise(resolve=>{jbReq('GET',CMD_BIN,null,(err,code,data)=>{try{sendJSON(res,200,JSON.parse(data));}catch(e){sendJSON(res,200,{cmd:'none'});}resolve();});});
+    if(method==='GET'){const c=await getCmd();sendJSON(res,200,c);return;}
     if(method==='POST'){
-      const body=await readBody(req);
-      let payload; try{payload=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-      // Normalizar comandos — aceita variações de nome, mapeia para padrão
+      const body=await readBody(req);let payload;
+      try{payload=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
       if(payload.cmd){
         const c=payload.cmd.toLowerCase().trim();
-        if(['iniciar','play','start','resume'].includes(c))        payload.cmd='iniciar';
-        else if(['pausar','pause','stop'].includes(c))             payload.cmd='pausar';
+        if(['iniciar','play','start','resume'].includes(c)) payload.cmd='iniciar';
+        else if(['pausar','pause','stop'].includes(c)) payload.cmd='pausar';
         else if(['zerar','fechar','close','closeall'].includes(c)) payload.cmd='zerar';
       }
-      return new Promise(resolve=>{jbReq('PUT',CMD_BIN,payload,(err,code)=>{sendJSON(res,!err&&code===200?200:500,{ok:!err&&code===200,cmd:payload.cmd});resolve();});});
+      const ok=await saveCmd(payload);
+      sendJSON(res,ok?200:500,{ok,cmd:payload.cmd});return;
     }
   }
 
-  // ════════════════════════════════════════════════════════════════
-  //  /admin — Painel Admin v3
-  // ════════════════════════════════════════════════════════════════
+  // ── auth/* ────────────────────────────────────────────────────
+  if(reqPath==='/auth/check'){
+    const account=qs.get('account')||'';
+    if(!account){sendJSON(res,400,{error:'account obrigatório'});return;}
+    const lics=await getLics();const lic=lics[account];
+    if(!lic){sendJSON(res,404,{error:'Conta não encontrada'});return;}
+    const s=checkLic(lic);const db2=await getAuth();
+    const hasPassword=!!db2.users?.[account];
+    if(!hasPassword){
+      const setupToken=genToken(account);
+      if(!db2.tokens)db2.tokens={};
+      db2.tokens['setup_'+account]={token:setupToken,account,expires:Date.now()+600000,type:'setup'};
+      await saveAuth(db2);
+      sendJSON(res,200,{hasPassword:false,setupToken,account,plan:s.plan});
+    } else {
+      sendJSON(res,200,{hasPassword:true,account,plan:s.plan});
+    }
+    return;
+  }
+
+  if(reqPath==='/auth/setup-password'&&method==='POST'){
+    const body=await readBody(req);let data;try{data=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+    const{setupToken,password}=data;if(!setupToken||!password){sendJSON(res,400,{error:'Campos obrigatórios'});return;}
+    const db2=await getAuth();let account=null;
+    for(const k of Object.keys(db2.tokens||{})){
+      const t=db2.tokens[k];
+      if(t.token===setupToken&&t.type==='setup'&&t.expires>Date.now()){account=t.account;delete db2.tokens[k];break;}
+    }
+    if(!account){sendJSON(res,400,{error:'Token inválido ou expirado'});return;}
+    if(!db2.users)db2.users={};
+    db2.users[account]={passwordHash:hashPw(password),createdAt:Date.now()};
+    await saveAuth(db2);sendJSON(res,200,{ok:true,account});return;
+  }
+
+  if(reqPath==='/auth/login'&&method==='POST'){
+    const body=await readBody(req);let data;try{data=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+    const{account,password}=data;
+    const db2=await getAuth();const user=db2.users?.[account];
+    if(!user||user.passwordHash!==hashPw(password)){sendJSON(res,401,{error:'Credenciais inválidas'});return;}
+    const token=genToken(account);
+    if(!db2.tokens)db2.tokens={};
+    db2.tokens['session_'+account+'_'+Date.now()]={token,account,expires:Date.now()+7*DAY_MS,type:'session'};
+    await saveAuth(db2);sendJSON(res,200,{ok:true,token,account});return;
+  }
+
+  if(reqPath==='/auth/verify'){
+    const tok=req.headers['x-auth-token']||qs.get('token')||'';
+    const sess=await verifySession(tok);
+    if(!sess){sendJSON(res,401,{valid:false});return;}
+    const lics=await getLics();const s=checkLic(lics[sess.account]);
+    sendJSON(res,200,{valid:true,account:sess.account,plan:s.plan});return;
+  }
+
+  // ── Admin ─────────────────────────────────────────────────────
   if(reqPath.startsWith('/admin')){
     if(!adminAuth(req)){res.writeHead(401,{'WWW-Authenticate':'Basic realm="Dashbot Admin"',...CORS});res.end('Não autorizado');return;}
 
     if((reqPath==='/admin'||reqPath==='/admin/')&&method==='GET'){
-      const lics=await getLics();const db=await getAuth();const now=Date.now();
+      const lics=await getLics();const now=Date.now();
       let rows='';let stats={total:0,premium:0,trial:0,expired:0,active:0};
       for(const[acct,lic]of Object.entries(lics)){
         if(acct.startsWith('_'))continue;
@@ -390,64 +430,27 @@ http.createServer(async(req,res)=>{
         else if(s.plan==='trial')stats.trial++;
         else stats.expired++;
         if(lic.lastSeen&&now-lic.lastSeen<7*DAY_MS)stats.active++;
-        const hasPw=!!db.users?.[acct];
         const bc=s.plan==='lifetime'?'#7c3aed':s.plan==='premium'?'#10b981':s.plan==='trial'?'#3b82f6':'#ef4444';
-        const userProds=(lic.products||[]).map(p=>`<span style="background:#1e2438;padding:2px 6px;border-radius:4px;font-size:10px;margin:1px;display:inline-block">${p.name}${p.accountType?'('+p.accountType+')':''}</span>`).join('');
+        const userProds=(lic.products||[]).map(p=>'<span style="background:#1e2438;padding:2px 6px;border-radius:4px;font-size:10px;margin:1px;display:inline-block">'+p.name+(p.accountType?'('+p.accountType+')':'')+'</span>').join('');
         const endDate=s.plan==='lifetime'?'Vitalícia':s.plan==='premium'?ptDate(lic.premiumEnd):s.plan==='trial'?ptDate(lic.trialEnd):'—';
-        rows+=`<tr>
-          <td><code>${acct}</code></td>
-          <td>${lic.name||'—'}<br><small style="color:#64748b">${lic.email||''} ${lic.phone||''}</small></td>
-          <td><span class="badge" style="background:${bc}">${s.plan}</span></td>
-          <td>${endDate}</td>
-          <td>${lic.lastSeen?new Date(lic.lastSeen).toLocaleDateString('pt-BR'):'—'}</td>
-          <td>${hasPw?'✅':'❌'}</td>
-          <td>${userProds||'—'}<br><button class="btn-sm" onclick="addUserProd('${acct}')">+ Produto</button></td>
-          <td>
-            <button class="btn-sm" onclick="editUser('${acct}','${(lic.name||'').replace(/'/g,"\\'")}','${lic.email||''}','${lic.phone||''}')">✏️</button>
-            <button class="btn-sm" onclick="bonusModal('${acct}','${lic.name||''}')">📅 Licença</button>
-            <button class="btn-sm btn-red" onclick="revogar('${acct}')">🚫</button>
-            <button class="btn-sm" onclick="resetPw('${acct}')">↺</button>
-            <button class="btn-sm btn-red" onclick="delUser('${acct}')">🗑</button>
-          </td></tr>`;
+        rows+='<tr>'
+          +'<td><code>'+acct+'</code></td>'
+          +'<td>'+(lic.name||'—')+'<br><small style="color:#64748b">'+(lic.email||'')+' '+(lic.phone||'')+'</small></td>'
+          +'<td><span class="badge" style="background:'+bc+'">'+s.plan+'</span></td>'
+          +'<td>'+endDate+'</td>'
+          +'<td>'+(lic.lastSeen?new Date(lic.lastSeen).toLocaleDateString('pt-BR'):'—')+'</td>'
+          +'<td>'+(userProds||'—')+'<br><button class="btn-sm" onclick="addUserProd(\''+acct+'\')">+ Produto</button></td>'
+          +'<td>'
+          +'<button class="btn-sm" onclick="editUser(\''+acct+'\',\''+encodeURIComponent(lic.name||'')+'\',\''+encodeURIComponent(lic.email||'')+'\',\''+encodeURIComponent(lic.phone||'')+'\')">&#x270F;&#xFE0F;</button> '
+          +'<button class="btn-sm" onclick="bonusModal(\''+acct+'\',\''+encodeURIComponent(lic.name||'')+'\')">&#x1F4C5; Licenca</button> '
+          +'<button class="btn-sm btn-red" onclick="revogar(\''+acct+'\')">&#x1F6AB;</button> '
+          +'<button class="btn-sm" onclick="resetPw(\''+acct+'\')">&#x21BA;</button> '
+          +'<button class="btn-sm btn-red" onclick="delUser(\''+acct+'\')">&#x1F5D1;</button>'
+          +'</td></tr>';
       }
-      const products=(lics._products||[]);
-      const prodRows=products.filter(p=>p.id!=='prod_1000000007'||true).map(p=>`<tr>
-        <td><code style="font-size:10px">${p.id}</code></td>
-        <td><strong>${p.name}</strong></td><td>${p.type}</td>
-        <td>${p.minLots||0}</td><td>${p.maxLots||0}</td><td>${p.instances||1}</td>
-        <td style="color:#8b949e">${p.description||'—'}</td>
-      </tr>`).join('')||'<tr><td colspan="7" style="color:#8b949e;text-align:center;padding:16px">Nenhum produto</td></tr>';
-      sendHTML(res,buildAdminHTML(rows,stats,prodRows,JSON.stringify(products)));
-      return;
-    }
-
-    if(reqPath==='/admin/test-bin'&&method==='GET'){
-      // Testar leitura e escrita no LICENSE_BIN
-      const result={};
-      result.LICENSE_BIN=LICENSE_BIN||'NAO CONFIGURADO';
-      result.MASTER_KEY_prefix=MASTER_KEY?MASTER_KEY.substring(0,12)+'...':'NAO CONFIGURADO';
-      // Testar leitura
-      await new Promise(resolve=>{
-        jbReq('GET',LICENSE_BIN,null,(err,code,data)=>{
-          if(err) result.read_error=err.message;
-          else if(code!==200) result.read_error='HTTP '+code+' - '+String(data).substring(0,200);
-          else { result.read_ok=true; try{const p=JSON.parse(data);result.licenses_count=Object.keys(p.licenses||p).filter(k=>!k.startsWith('_')).length;}catch(e){result.read_parse_error=e.message;} }
-          resolve();
-        });
-      });
-      // Testar escrita apenas se leitura OK
-      if(result.read_ok){
-        const lics=await getLics();
-        await new Promise(resolve=>{
-          jbReq('PUT',LICENSE_BIN,{licenses:lics},(err,code,data)=>{
-            if(err) result.write_error=err.message;
-            else if(code!==200) result.write_error='HTTP '+code+' - '+String(data).substring(0,300);
-            else result.write_ok=true;
-            resolve();
-          });
-        });
-      }
-      sendJSON(res,200,result);return;
+      const products=await getProducts();
+      const prodRows=products.map(p=>'<tr><td><code style="font-size:10px">'+p.id+'</code></td><td><strong>'+p.name+'</strong></td><td>'+p.type+'</td><td>'+(p.minLots||0)+'</td><td>'+(p.maxLots||0)+'</td><td>'+(p.instances||1)+'</td><td style="color:#8b949e">'+(p.description||'—')+'</td></tr>').join('')||'<tr><td colspan="7" style="color:#8b949e;text-align:center;padding:16px">Nenhum produto</td></tr>';
+      sendHTML(res,buildAdminHTML(rows,stats,prodRows,JSON.stringify(products)));return;
     }
 
     if(reqPath==='/admin/users-json'&&method==='GET'){
@@ -461,8 +464,7 @@ http.createServer(async(req,res)=>{
         else stats.expired++;
         if(lic.lastSeen&&now-lic.lastSeen<7*DAY_MS)stats.active++;
         const endDate=s.plan==='lifetime'?'Vitalicia':s.plan==='premium'?ptDate(lic.premiumEnd):s.plan==='trial'?ptDate(lic.trialEnd):'—';
-        const lastSeen=lic.lastSeen?new Date(lic.lastSeen).toLocaleDateString('pt-BR'):'—';
-        users.push({account:acct,name:lic.name||'',email:lic.email||'',phone:lic.phone||'',plan:s.plan,endDate,lastSeen,products:lic.products||[]});
+        users.push({account:acct,name:lic.name||'',email:lic.email||'',phone:lic.phone||'',plan:s.plan,endDate,lastSeen:lic.lastSeen?new Date(lic.lastSeen).toLocaleDateString('pt-BR'):'—',products:lic.products||[]});
       }
       sendJSON(res,200,{ok:true,users,stats});return;
     }
@@ -471,43 +473,25 @@ http.createServer(async(req,res)=>{
       const body=await readBody(req);let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
       if(!d.account){sendJSON(res,400,{error:'Conta MT5 obrigatória'});return;}
       const lics=await getLics();const now=Date.now();const key=String(d.account);
-      const existing=lics[key]; // upsert: cria ou atualiza
-
-      // Montar produtos (merge com existentes)
+      const existing=lics[key];
       const initProds=existing&&existing.products?[...existing.products]:[];
       if(d.products&&Array.isArray(d.products)){
         d.products.forEach(up=>{
           const catProd=(lics._products||[]).find(p=>p.id===up.productId);
-          // Aceitar mesmo se produto não está no catálogo local (pode ser novo)
           const prodName=catProd?catProd.name:(up.name||up.productId);
           const idx=initProds.findIndex(p=>p.id===up.productId);
-          const entry={id:up.productId,name:prodName,assignedAt:now,
-            accountType:up.accountType||'',accountReal:up.accountReal||'',accountDemo:up.accountDemo||'',
-            minLots:parseFloat(up.minLots)||0,maxLots:parseFloat(up.maxLots)||0,instances:parseInt(up.instances)||1};
-          if(idx>=0) initProds[idx]=entry; else initProds.push(entry);
+          const entry={id:up.productId,name:prodName,assignedAt:now,accountType:up.accountType||'',accountReal:up.accountReal||'',accountDemo:up.accountDemo||'',minLots:parseFloat(up.minLots)||0,maxLots:parseFloat(up.maxLots)||0,instances:parseInt(up.instances)||1};
+          if(idx>=0)initProds[idx]=entry;else initProds.push(entry);
         });
       }
-
-      // Tipo de licença
       let type='trial',premiumEnd=null;
       const trialEnd=(existing&&existing.trialEnd)||(now+TRIAL_DAYS*DAY_MS);
       if(d.lifetime){type='lifetime';}
       else if(d.endDate){type='premium';premiumEnd=new Date(d.endDate).getTime();}
       else if(existing&&(existing.type==='premium'||existing.type==='lifetime')){type=existing.type;premiumEnd=existing.premiumEnd||null;}
-
-      lics[key]={...(existing||{}),account:key,
-        name:d.name||(existing&&existing.name)||'',
-        email:d.email||(existing&&existing.email)||'',
-        phone:d.phone||(existing&&existing.phone)||'',
-        type,trialStart:(existing&&existing.trialStart)||now,trialEnd,
-        premiumStart:type==='premium'?((existing&&existing.premiumStart)||now):(existing&&existing.premiumStart),
-        premiumEnd,firstSeen:(existing&&existing.firstSeen)||now,lastSeen:(existing&&existing.lastSeen)||0,
-        products:initProds};
+      lics[key]={...(existing||{}),account:key,name:d.name||(existing&&existing.name)||'',email:d.email||(existing&&existing.email)||'',phone:d.phone||(existing&&existing.phone)||'',type,trialStart:(existing&&existing.trialStart)||now,trialEnd,premiumStart:type==='premium'?((existing&&existing.premiumStart)||now):(existing&&existing.premiumStart),premiumEnd,firstSeen:(existing&&existing.firstSeen)||now,lastSeen:(existing&&existing.lastSeen)||0,products:initProds};
       const ok=await saveLics(lics);
-      if(!ok){
-        sendJSON(res,500,{ok:false,error:'Falha ao salvar no banco (JSONBin). Verifique JSONBIN_LICENSE_BIN e JSONBIN_MASTER_KEY nas variaveis de ambiente do Render.'});
-        return;
-      }
+      if(!ok){sendJSON(res,500,{ok:false,error:'Falha ao salvar no banco. Verifique MONGO_URI.'});return;}
       sendJSON(res,200,{ok:true,account:key,updated:!!existing});return;
     }
 
@@ -518,269 +502,98 @@ http.createServer(async(req,res)=>{
       let end,type='premium';
       if(d.lifetime){type='lifetime';end=null;}
       else if(d.endDate){end=new Date(d.endDate).getTime();}
-      else{const base=(ex?.premiumEnd&&ex.premiumEnd>now)?ex.premiumEnd:now;end=base+(parseInt(d.months)||1)*30*DAY_MS;}
-      lics[key]={...(ex||{}),account:key,name:d.name||ex?.name||'',type,
-        trialStart:ex?.trialStart||now,trialEnd:ex?.trialEnd||(now+TRIAL_DAYS*DAY_MS),
-        premiumStart:ex?.premiumStart||now,premiumEnd:end,lastSeen:ex?.lastSeen||now,firstSeen:ex?.firstSeen||now};
+      else{const base=(ex&&ex.premiumEnd&&ex.premiumEnd>now)?ex.premiumEnd:now;end=base+(parseInt(d.months)||1)*30*DAY_MS;}
+      lics[key]={...(ex||{}),account:key,name:d.name||ex.name||'',type,trialStart:ex.trialStart||now,trialEnd:ex.trialEnd||(now+TRIAL_DAYS*DAY_MS),premiumStart:ex.premiumStart||now,premiumEnd:end,lastSeen:ex.lastSeen||now,firstSeen:ex.firstSeen||now};
       const ok=await saveLics(lics);
       sendJSON(res,ok?200:500,{ok,expiresStr:end?ptDate(end):'Vitalícia'});return;
     }
+
     if(reqPath==='/admin/license'&&method==='DELETE'){
       const body=await readBody(req);let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-      const lics=await getLics();if(lics[String(d.account)]){lics[String(d.account)].type='revoked';lics[String(d.account)].premiumEnd=0;lics[String(d.account)].trialEnd=0;}
+      const lics=await getLics();const key=String(d.account);
+      if(lics[key]){lics[key].type='revoked';lics[key].premiumEnd=0;lics[key].trialEnd=0;}
       sendJSON(res,await saveLics(lics)?200:500,{ok:true});return;
     }
+
     if(reqPath==='/admin/user'&&method==='DELETE'){
       const body=await readBody(req);let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-      const lics=await getLics();const db=await getAuth();
-      delete lics[String(d.account)];delete db.users?.[String(d.account)];
-      for(const k of Object.keys(db.tokens||{}))if(db.tokens[k].account===String(d.account))delete db.tokens[k];
-      const ok1=await saveLics(lics);const ok2=await saveAuth(db);
-      sendJSON(res,ok1&&ok2?200:500,{ok:ok1&&ok2});return;
+      const lics=await getLics();const key=String(d.account);
+      delete lics[key];
+      const ok1=await saveLics(lics);
+      const ok2=await deleteLic(key);
+      const db2=await getAuth();delete db2.users?.[key];await saveAuth(db2);
+      sendJSON(res,(ok1||ok2)?200:500,{ok:true});return;
     }
+
     if(reqPath==='/admin/user'&&method==='PUT'){
       const body=await readBody(req);let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-      if(!d.account){sendJSON(res,400,{error:'Conta obrigatória'});return;}
       const lics=await getLics();const key=String(d.account);
-      if(!lics[key])lics[key]={account:key,type:'trial',trialStart:Date.now(),trialEnd:Date.now()+TRIAL_DAYS*DAY_MS,firstSeen:Date.now(),lastSeen:Date.now()};
-      if(d.name!==undefined)lics[key].name=d.name;
-      if(d.email!==undefined)lics[key].email=d.email;
-      if(d.phone!==undefined)lics[key].phone=d.phone;
+      if(!lics[key]){sendJSON(res,404,{error:'Conta não encontrada'});return;}
+      if(d.name)lics[key].name=d.name;if(d.email)lics[key].email=d.email;if(d.phone)lics[key].phone=d.phone;
       sendJSON(res,await saveLics(lics)?200:500,{ok:true});return;
     }
-    if(reqPath==='/admin/user'&&method==='GET'){
-      const account=qs.get('account')||'';const lics=await getLics();const db=await getAuth();
-      const lic=lics[account]||{};const hasPw=!!db.users?.[account];
-      sendJSON(res,200,{account,name:lic.name||'',email:lic.email||'',phone:lic.phone||'',hasPw,products:lic.products||[]});return;
-    }
+
     if(reqPath==='/admin/user-product'&&method==='POST'){
       const body=await readBody(req);let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-      const lics=await getLics();const key=String(d.account);
-      if(!lics[key]){sendJSON(res,404,{error:'Usuário não encontrado'});return;}
+      const lics=await getLics();const key=String(d.account);const now=Date.now();
+      if(!lics[key]){lics[key]={account:key,type:'trial',trialStart:now,trialEnd:now+TRIAL_DAYS*DAY_MS,firstSeen:now,lastSeen:0,products:[]};}
       if(!lics[key].products)lics[key].products=[];
-      const existing=lics[key].products.findIndex(p=>p.id===d.productId);
-      const entry={id:d.productId,name:d.name||d.productId,assignedAt:Date.now(),
-        accountType:d.accountType||'',accountReal:d.accountReal||'',accountDemo:d.accountDemo||'',
-        minLots:parseFloat(d.minLots)||0,maxLots:parseFloat(d.maxLots)||0,instances:parseInt(d.instances)||1};
-      if(existing>=0)lics[key].products[existing]=entry;else lics[key].products.push(entry);
+      const idx=lics[key].products.findIndex(p=>p.id===d.productId);
+      const entry={id:d.productId,name:d.name||d.productId,assignedAt:now,accountType:d.accountType||'',accountReal:d.accountReal||'',accountDemo:d.accountDemo||'',minLots:parseFloat(d.minLots)||0,maxLots:parseFloat(d.maxLots)||0,instances:parseInt(d.instances)||1};
+      if(idx>=0)lics[key].products[idx]=entry;else lics[key].products.push(entry);
       sendJSON(res,await saveLics(lics)?200:500,{ok:true});return;
     }
-    if(reqPath==='/admin/user-product'&&method==='DELETE'){
-      const body=await readBody(req);let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-      const lics=await getLics();const key=String(d.account);
-      if(lics[key]&&lics[key].products)lics[key].products=lics[key].products.filter(p=>p.id!==d.productId);
-      sendJSON(res,await saveLics(lics)?200:500,{ok:true});return;
-    }
+
     if(reqPath==='/admin/manual'&&method==='POST'){
       const body=await readBody(req);let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-      if(!d.account){sendJSON(res,400,{error:'Conta obrigatória'});return;}
       const lics=await getLics();const now=Date.now();const key=String(d.account);const ex=lics[key];
-      let end,entry;
-      if(d.lifetime){
-        entry={...(ex||{}),account:key,name:d.name||ex?.name||'',type:'lifetime',
-          trialStart:ex?.trialStart||now,trialEnd:ex?.trialEnd||(now+TRIAL_DAYS*DAY_MS),
-          premiumEnd:null,lastSeen:ex?.lastSeen||now,firstSeen:ex?.firstSeen||now};
-      } else {
-        end=d.endDate?new Date(d.endDate).getTime():now+(parseInt(d.days||30)*DAY_MS);
-        entry={...(ex||{}),account:key,name:d.name||ex?.name||'',type:'premium',
-          trialStart:ex?.trialStart||now,trialEnd:ex?.trialEnd||(now+TRIAL_DAYS*DAY_MS),
-          premiumStart:ex?.premiumStart||now,premiumEnd:end,
-          lastSeen:ex?.lastSeen||now,firstSeen:ex?.firstSeen||now,note:'Manual'};
-      }
-      lics[key]=entry;const ok=await saveLics(lics);
-      sendJSON(res,ok?200:500,{ok,expiresStr:end?ptDate(end):'Vitalícia'});return;
+      const end=d.endDate?new Date(d.endDate).getTime():now+30*DAY_MS;
+      lics[key]={...(ex||{}),account:key,name:d.name||ex?.name||'',type:'premium',trialStart:ex?.trialStart||now,trialEnd:ex?.trialEnd||(now+TRIAL_DAYS*DAY_MS),premiumStart:now,premiumEnd:end,firstSeen:ex?.firstSeen||now,lastSeen:ex?.lastSeen||0,products:ex?.products||[]};
+      const ok=await saveLics(lics);
+      sendJSON(res,ok?200:500,{ok,expiresStr:ptDate(end)});return;
     }
+
     if(reqPath==='/admin/reset-password'&&method==='POST'){
       const body=await readBody(req);let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-      const db=await getAuth();delete db.users[String(d.account)];
-      for(const k of Object.keys(db.tokens||{}))if(db.tokens[k].account===String(d.account))delete db.tokens[k];
-      sendJSON(res,await saveAuth(db)?200:500,{ok:true});return;
+      const db2=await getAuth();if(db2.users&&db2.users[d.account])delete db2.users[d.account];
+      sendJSON(res,await saveAuth(db2)?200:500,{ok:true});return;
     }
+
     if(reqPath==='/admin/products'){
-      const lics=await getLics();
-      if(method==='GET'){sendJSON(res,200,{products:lics._products||[]});return;}
+      if(method==='GET'){const prods=await getProducts();sendJSON(res,200,{ok:true,products:prods});return;}
       if(method==='POST'){
         const body=await readBody(req);let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-        if(!d.name||!d.type){sendJSON(res,400,{error:'name e type obrigatórios'});return;}
-        if(!lics._products)lics._products=[];
-        const prod={id:'prod_'+Date.now(),name:d.name,type:d.type,description:d.description||'',
-          minLots:parseFloat(d.minLots)||0,maxLots:parseFloat(d.maxLots)||0,
-          instances:parseInt(d.instances)||1,active:true,createdAt:Date.now()};
-        lics._products.push(prod);const ok=await saveLics(lics);
-        sendJSON(res,ok?200:500,{ok,product:prod});return;
-      }
-      if(method==='DELETE'){
-        const body=await readBody(req);let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-        lics._products=(lics._products||[]).filter(p=>p.id!==d.id);
-        sendJSON(res,await saveLics(lics)?200:500,{ok:true});return;
+        const ok=await saveProduct(d);sendJSON(res,ok?200:500,{ok});return;
       }
     }
-    // GET /admin/generate-key-ui — interface para gerar chaves offline
+
     if(reqPath==='/admin/generate-key'&&method==='POST'){
       const body=await readBody(req);let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
       const{productId,account,accountType,expiry}=d;
       if(!productId||!account||!accountType||!expiry){sendJSON(res,400,{error:'Campos obrigatórios'});return;}
-      const payload=`${productId}|${account}|${accountType}|${expiry}`;
+      const payload=productId+'|'+account+'|'+accountType+'|'+expiry;
       const sig=crypto.createHmac('sha256',OFFLINE_SECRET).update(payload).digest('hex').substring(0,16);
-      const key=Buffer.from(`${payload}|${sig}`).toString('base64');
-      sendJSON(res,200,{ok:true,key,productId,account,accountType,expiry});return;
+      const key=Buffer.from(payload+'|'+sig).toString('base64');
+      sendJSON(res,200,{ok:true,key,payload,expiry});return;
     }
-    // ── /admin/wipe — Limpar TODO o banco (apenas para testes) ───
+
     if(reqPath==='/admin/wipe'&&method==='DELETE'){
       const lics=await getLics();
-      // Preservar apenas os produtos do catálogo (_products)
       const prods=lics._products||[];
       const empty={_products:prods};
-      const ok=await saveLics(empty);
-      // Limpar auth também
-      const db=await getAuth();
-      db.users={};db.tokens={};
-      await saveAuth(db);
-      sendJSON(res,ok?200:500,{ok,message:'Banco limpo. Produtos preservados.',accountsRemoved:Object.keys(lics).filter(k=>!k.startsWith('_')).length});
-      return;
+      const removed=Object.keys(lics).filter(k=>!k.startsWith('_')).length;
+      // Limpar MongoDB
+      if(db){await db.collection('licenses').deleteMany({});await db.collection('auth').deleteMany({});}
+      _licsCache={_products:prods};_licsTime=Date.now();_authCache={users:{},tokens:{}};
+      sendJSON(res,200,{ok:true,message:'Banco limpo.',accountsRemoved:removed});return;
     }
 
     sendJSON(res,404,{error:'Rota admin não encontrada'});return;
   }
 
-  // /fix-bins — corrigir bins duplicados
-  if(reqPath==='/fix-bins'&&method==='GET'){
-    const mk=MASTER_KEY;
-    if(!mk){sendJSON(res,400,{error:'JSONBIN_MASTER_KEY nao configurado'});return;}
-    function createBin(name,data){
-      return new Promise(resolve=>{
-        const body=JSON.stringify(data);
-        const opts={hostname:'api.jsonbin.io',port:443,path:'/v3/b',method:'POST',
-          headers:{'Content-Type':'application/json','X-Master-Key':mk,'X-Bin-Name':name,'Content-Length':Buffer.byteLength(body)}};
-        const req2=https.request(opts,res2=>{let dd='';res2.on('data',c=>dd+=c);res2.on('end',()=>{
-          try{const p=JSON.parse(dd);resolve({ok:res2.statusCode===200,id:p.metadata&&p.metadata.id});}
-          catch(e){resolve({ok:false,raw:dd.substring(0,300)});}
-        });});
-        req2.on('error',e=>resolve({ok:false,error:e.message}));
-        req2.write(body);req2.end();
-      });
-    }
-    const problems=[];const fixes={};const instructions=[];
-    if(CMD_BIN===LICENSE_BIN){
-      problems.push('CMD_BIN igual ao LICENSE_BIN');
-      const r=await createBin('dashbot-cmd',{cmd:'none'});
-      fixes.JSONBIN_CMD_BIN={ok:r.ok,newId:r.id,action:'novo bin criado'};
-      if(r.ok) instructions.push('JSONBIN_CMD_BIN='+r.id);
-    } else {
-      fixes.JSONBIN_CMD_BIN={ok:true,id:CMD_BIN,action:'ja correto'};
-    }
-    const authClean=AUTH_BIN?AUTH_BIN.trim():'';
-    if(AUTH_BIN&&AUTH_BIN!==authClean){
-      problems.push('AUTH_BIN tem newline/espacos no final');
-      fixes.JSONBIN_AUTH_BIN={ok:true,cleanId:authClean,action:'use o ID limpo'};
-      instructions.push('JSONBIN_AUTH_BIN='+authClean);
-    } else {
-      fixes.JSONBIN_AUTH_BIN={ok:true,id:AUTH_BIN,action:'ja correto'};
-    }
-    const actionMsg=instructions.length>0?('Atualize no Render > Environment: '+instructions.join(' | ')):'Nenhuma alteracao necessaria';
-    sendJSON(res,200,{ok:true,problems,fixes,instructions,action:actionMsg});
-    return;
-  }
-
-  // ── /status — verificar configuração das variáveis ───────────────
-  if(reqPath==='/status'){
-    sendJSON(res,200,{
-      ok:true,
-      config:{
-        JSONBIN_MASTER_KEY: MASTER_KEY?'configurado ('+MASTER_KEY.substring(0,8)+'...)':'NAO CONFIGURADO',
-        JSONBIN_LICENSE_BIN: LICENSE_BIN?'configurado: '+LICENSE_BIN:'NAO CONFIGURADO',
-        JSONBIN_DATA_BIN:    DATA_BIN?'configurado: '+DATA_BIN:'NAO CONFIGURADO',
-        JSONBIN_CMD_BIN:     CMD_BIN?'configurado: '+CMD_BIN:'NAO CONFIGURADO',
-        JSONBIN_AUTH_BIN:    AUTH_BIN?'configurado: '+AUTH_BIN:'NAO CONFIGURADO',
-        ADMIN_USER:          ADMIN_USER,
-        DASHBOT_TOKEN:       PROXY_TOKEN
-      },
-      missing: [
-        !MASTER_KEY && 'JSONBIN_MASTER_KEY',
-        !LICENSE_BIN && 'JSONBIN_LICENSE_BIN',
-        !CMD_BIN && 'JSONBIN_CMD_BIN'
-      ].filter(Boolean)
-    });
-    return;
-  }
-
-  // ── /setup — criar bins JSONBin automaticamente ───────────────────
-  // Uso: POST /setup com body {"masterKey":"$<YOUR_JSONBIN_MASTER_KEY>"}
-  if(reqPath==='/setup'&&method==='POST'){
-    const body=await readBody(req);let d;
-    try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
-    const mk=d.masterKey||MASTER_KEY;
-    if(!mk){sendJSON(res,400,{error:'masterKey obrigatório. Envie {"masterKey":"sua_chave_jsonbin"}'});return;}
-
-    function createBin(name,initialData){
-      return new Promise(resolve=>{
-        const body=JSON.stringify(initialData);
-        const opts={hostname:'api.jsonbin.io',port:443,
-          path:'/v3/b',method:'POST',
-          headers:{'Content-Type':'application/json','X-Master-Key':mk,'X-Bin-Name':name,'Content-Length':Buffer.byteLength(body)}};
-        const req2=https.request(opts,res2=>{let dd='';res2.on('data',c=>dd+=c);res2.on('end',()=>{
-          try{const p=JSON.parse(dd);resolve({ok:res2.statusCode===200,id:p.metadata&&p.metadata.id,name,status:res2.statusCode,raw:dd.substring(0,200)});}
-          catch(e){resolve({ok:false,name,status:res2.statusCode,raw:dd.substring(0,200)});}
-        });});
-        req2.on('error',e=>resolve({ok:false,name,error:e.message}));
-        req2.write(body);req2.end();
-      });
-    }
-
-    const results={};
-    const toCreate=[
-      {key:'JSONBIN_LICENSE_BIN', envKey:'LICENSE_BIN', current:LICENSE_BIN, name:'dashbot-licenses', data:{licenses:{}}},
-      {key:'JSONBIN_DATA_BIN',    envKey:'DATA_BIN',    current:DATA_BIN,    name:'dashbot-data',     data:{data:{}}},
-      {key:'JSONBIN_CMD_BIN',     envKey:'CMD_BIN',     current:CMD_BIN,     name:'dashbot-cmd',      data:{cmd:'none'}},
-      {key:'JSONBIN_AUTH_BIN',    envKey:'AUTH_BIN',    current:AUTH_BIN,    name:'dashbot-auth',     data:{auth:{users:{},tokens:{}}}}
-    ];
-
-    for(const bin of toCreate){
-      if(bin.current){results[bin.key]={ok:true,id:bin.current,msg:'já configurado'};continue;}
-      const r=await createBin(bin.name,bin.data);
-      results[bin.key]={ok:r.ok,id:r.id,status:r.status,raw:r.raw};
-    }
-
-    const allOk=Object.values(results).every(r=>r.ok);
-    const envVars=Object.entries(results).map(([k,v])=>k+'='+v.id).join('\n');
-
-    sendJSON(res,allOk?200:500,{
-      ok:allOk,
-      message:allOk?'Bins criados com sucesso! Configure as variaveis abaixo no Render:':'Alguns bins falharam. Verifique a masterKey.',
-      envVariables:results,
-      renderEnvBlock:allOk?'Cole estas variaveis no Render > Environment:\n\nJSONBIN_MASTER_KEY='+mk+'\n'+envVars:'',
-      results
-    });
-    return;
-  }
-
   sendJSON(res,404,{error:'Not found'});
 
 }).listen(PORT,()=>{
-  console.log('Dashbot Server v3 iniciado na porta '+PORT);
-  setTimeout(()=>{https.request({hostname:'dashbot.investidorbot.com',path:'/ping',method:'GET'},()=>{}).on('error',()=>{}).end();},30000);
-  setInterval(()=>{https.request({hostname:'dashbot.investidorbot.com',path:'/ping',method:'GET'},()=>{}).on('error',()=>{}).end();},10*60*1000);
+  console.log('Dashbot Server v3 (MongoDB) iniciado na porta '+PORT);
+  connectMongo();
 });
-
-// ════════════════════════════════════════════════════════════════
-//  Admin HTML
-// ════════════════════════════════════════════════════════════════
-// Admin HTML — lido do arquivo admin.html no mesmo diretório
-function buildAdminHTML(rows, stats, prodRows, productsJson) {
-  const adminFile = path.join(__dirname, 'admin.html');
-  let html;
-  try {
-    html = fs.readFileSync(adminFile, 'utf-8');
-  } catch(e) {
-    return '<h1>admin.html não encontrado</h1><p>Coloque o arquivo admin.html no mesmo diretório que server.js</p>';
-  }
-  // Injetar dados do servidor via script bootstrap
-  const bootstrap = `<script id="dashbot-bootstrap">
-window.__DASHBOT_DATA__ = {
-  rows: ${JSON.stringify(rows)},
-  stats: ${JSON.stringify(stats)},
-  products: ${productsJson||'[]'}
-};
-</script>`;
-  return html.replace('</body>', bootstrap + '\n</body>');
-}
