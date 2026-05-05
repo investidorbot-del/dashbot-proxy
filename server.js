@@ -597,6 +597,78 @@ http.createServer(async(req,res)=>{
     sendJSON(res,404,{error:'Rota admin não encontrada'});return;
   }
 
+  // ── /status — verificar configuração das variáveis ───────────────
+  if(reqPath==='/status'){
+    sendJSON(res,200,{
+      ok:true,
+      config:{
+        JSONBIN_MASTER_KEY: MASTER_KEY?'configurado ('+MASTER_KEY.substring(0,8)+'...)':'NAO CONFIGURADO',
+        JSONBIN_LICENSE_BIN: LICENSE_BIN?'configurado: '+LICENSE_BIN:'NAO CONFIGURADO',
+        JSONBIN_DATA_BIN:    DATA_BIN?'configurado: '+DATA_BIN:'NAO CONFIGURADO',
+        JSONBIN_CMD_BIN:     CMD_BIN?'configurado: '+CMD_BIN:'NAO CONFIGURADO',
+        JSONBIN_AUTH_BIN:    AUTH_BIN?'configurado: '+AUTH_BIN:'NAO CONFIGURADO',
+        ADMIN_USER:          ADMIN_USER,
+        DASHBOT_TOKEN:       PROXY_TOKEN
+      },
+      missing: [
+        !MASTER_KEY && 'JSONBIN_MASTER_KEY',
+        !LICENSE_BIN && 'JSONBIN_LICENSE_BIN',
+        !CMD_BIN && 'JSONBIN_CMD_BIN'
+      ].filter(Boolean)
+    });
+    return;
+  }
+
+  // ── /setup — criar bins JSONBin automaticamente ───────────────────
+  // Uso: POST /setup com body {"masterKey":"$<YOUR_JSONBIN_MASTER_KEY>"}
+  if(reqPath==='/setup'&&method==='POST'){
+    const body=await readBody(req);let d;
+    try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+    const mk=d.masterKey||MASTER_KEY;
+    if(!mk){sendJSON(res,400,{error:'masterKey obrigatório. Envie {"masterKey":"sua_chave_jsonbin"}'});return;}
+
+    function createBin(name,initialData){
+      return new Promise(resolve=>{
+        const body=JSON.stringify(initialData);
+        const opts={hostname:'api.jsonbin.io',port:443,
+          path:'/v3/b',method:'POST',
+          headers:{'Content-Type':'application/json','X-Master-Key':mk,'X-Bin-Name':name,'Content-Length':Buffer.byteLength(body)}};
+        const req2=https.request(opts,res2=>{let dd='';res2.on('data',c=>dd+=c);res2.on('end',()=>{
+          try{const p=JSON.parse(dd);resolve({ok:res2.statusCode===200,id:p.metadata&&p.metadata.id,name,status:res2.statusCode,raw:dd.substring(0,200)});}
+          catch(e){resolve({ok:false,name,status:res2.statusCode,raw:dd.substring(0,200)});}
+        });});
+        req2.on('error',e=>resolve({ok:false,name,error:e.message}));
+        req2.write(body);req2.end();
+      });
+    }
+
+    const results={};
+    const toCreate=[
+      {key:'JSONBIN_LICENSE_BIN', envKey:'LICENSE_BIN', current:LICENSE_BIN, name:'dashbot-licenses', data:{licenses:{}}},
+      {key:'JSONBIN_DATA_BIN',    envKey:'DATA_BIN',    current:DATA_BIN,    name:'dashbot-data',     data:{data:{}}},
+      {key:'JSONBIN_CMD_BIN',     envKey:'CMD_BIN',     current:CMD_BIN,     name:'dashbot-cmd',      data:{cmd:'none'}},
+      {key:'JSONBIN_AUTH_BIN',    envKey:'AUTH_BIN',    current:AUTH_BIN,    name:'dashbot-auth',     data:{auth:{users:{},tokens:{}}}}
+    ];
+
+    for(const bin of toCreate){
+      if(bin.current){results[bin.key]={ok:true,id:bin.current,msg:'já configurado'};continue;}
+      const r=await createBin(bin.name,bin.data);
+      results[bin.key]={ok:r.ok,id:r.id,status:r.status,raw:r.raw};
+    }
+
+    const allOk=Object.values(results).every(r=>r.ok);
+    const envVars=Object.entries(results).map(([k,v])=>k+'='+v.id).join('\n');
+
+    sendJSON(res,allOk?200:500,{
+      ok:allOk,
+      message:allOk?'Bins criados com sucesso! Configure as variaveis abaixo no Render:':'Alguns bins falharam. Verifique a masterKey.',
+      envVariables:results,
+      renderEnvBlock:allOk?'Cole estas variaveis no Render > Environment:\n\nJSONBIN_MASTER_KEY='+mk+'\n'+envVars:'',
+      results
+    });
+    return;
+  }
+
   sendJSON(res,404,{error:'Not found'});
 
 }).listen(PORT,()=>{
