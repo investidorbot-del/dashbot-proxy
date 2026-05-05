@@ -425,28 +425,47 @@ async function loadUsersTable() {
 
 function renderUsersFromData(users, stats) {
   var tb = document.getElementById("usersTable");
-  if (!users||!users.length) { tb.innerHTML='<tr><td colspan="7" class="loading">Nenhum usuario</td></tr>'; return; }
-  var colors = {lifetime:"#7c3aed",premium:"#10b981",trial:"#3b82f6"};
-  tb.innerHTML = users.map(function(u) {
-    var bc = colors[u.plan]||"#ef4444";
-    var prods = (u.products||[]).map(function(p){return '<span style="background:#1e2438;padding:2px 5px;border-radius:4px;font-size:10px">'+p.name+(p.accountType?"("+p.accountType+")":"")+"</span>";}).join(" ");
-    var sn=encodeURIComponent(u.name||""),se=encodeURIComponent(u.email||""),sp=encodeURIComponent(u.phone||"");
-    return "<tr>"
-      +"<td><code>"+u.account+"</code></td>"
-      +"<td>"+(u.name||"—")+"<br><small style='color:#64748b'>"+(u.email||"")+" "+(u.phone||"")+"</small></td>"
-      +'<td><span class="badge" style="background:'+bc+'">'+u.plan+"</span></td>"
-      +"<td>"+(u.endDate||"—")+"</td>"
-      +"<td>"+(u.lastSeen||"—")+"</td>"
-      +"<td>"+(prods||"—")+'<br><button class="btn-sm" onclick="addUserProd(\'"+u.account+"\')'>+ Produto</button></td>"
-      +"<td>"
-      +'<button class="btn-sm" onclick="editUser(\'"+u.account+"\'\'\'"+sn+"\'\'\'"+se+"\'\'\'"+sp+"\'\')">✏</button> '
-      +'<button class="btn-sm" onclick="bonusModal(\'"+u.account+"\'\'\'"+sn+"\'\')">📅</button> '
-      +'<button class="btn-sm btn-red" onclick="revogar(\'"+u.account+"\'\')">🚫</button> '
-      +'<button class="btn-sm" onclick="resetPw(\'"+u.account+"\'\')">↺</button> '
-      +'<button class="btn-sm btn-red" onclick="delUser(\'"+u.account+"\'\')">🗑</button>'
-      +"</td></tr>";
-  }).join("");
-  if(stats){var sm={total:"total-users",premium:"premium-users",trial:"trial-users",expired:"expired-users",active:"active-users"};Object.keys(sm).forEach(function(k){var el=document.getElementById(sm[k]);if(el&&stats[k]!==undefined)el.textContent=stats[k];});}
+  if (!users || !users.length) {
+    tb.innerHTML = '<tr><td colspan="7" class="loading">Nenhum usuario cadastrado</td></tr>';
+    return;
+  }
+  var colors = { lifetime: "#7c3aed", premium: "#10b981", trial: "#3b82f6" };
+  var html = "";
+  for (var i = 0; i < users.length; i++) {
+    var u = users[i];
+    var bc = colors[u.plan] || "#ef4444";
+    var prods = "";
+    for (var j = 0; j < (u.products||[]).length; j++) {
+      var p = u.products[j];
+      prods += '<span style="background:#1e2438;padding:2px 5px;border-radius:4px;font-size:10px">' + p.name + (p.accountType ? "(" + p.accountType + ")" : "") + "</span> ";
+    }
+    var ac = u.account;
+    var sn = encodeURIComponent(u.name || "");
+    var se = encodeURIComponent(u.email || "");
+    var sp = encodeURIComponent(u.phone || "");
+    html += "<tr>";
+    html += "<td><code>" + ac + "</code></td>";
+    html += "<td>" + (u.name || "—") + '<br><small style="color:#64748b">' + (u.email || "") + " " + (u.phone || "") + "</small></td>";
+    html += '<td><span class="badge" style="background:' + bc + '">' + u.plan + "</span></td>";
+    html += "<td>" + (u.endDate || "—") + "</td>";
+    html += "<td>" + (u.lastSeen || "—") + "</td>";
+    html += "<td>" + (prods || "—") + '<br><button class="btn-sm" onclick="addUserProd(\'' + ac + '\')">+ Produto</button></td>';
+    html += "<td>";
+    html += '<button class="btn-sm" onclick="editUser(\'' + ac + "','" + sn + "','" + se + "','" + sp + '\')">✏️</button> ';
+    html += '<button class="btn-sm" onclick="bonusModal(\'' + ac + "','" + sn + '\')">📅</button> ';
+    html += '<button class="btn-sm btn-red" onclick="revogar(\'' + ac + '\')">🚫</button> ';
+    html += '<button class="btn-sm" onclick="resetPw(\'' + ac + '\')">↺</button> ';
+    html += '<button class="btn-sm btn-red" onclick="delUser(\'' + ac + '\')">🗑</button>';
+    html += "</td></tr>";
+  }
+  tb.innerHTML = html;
+  if (stats) {
+    var sm = { total: "total-users", premium: "premium-users", trial: "trial-users", expired: "expired-users", active: "active-users" };
+    for (var k in sm) {
+      var el = document.getElementById(sm[k]);
+      if (el && stats[k] !== undefined) el.textContent = stats[k];
+    }
+  }
 }
 
 
