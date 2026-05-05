@@ -421,6 +421,35 @@ http.createServer(async(req,res)=>{
       return;
     }
 
+    if(reqPath==='/admin/test-bin'&&method==='GET'){
+      // Testar leitura e escrita no LICENSE_BIN
+      const result={};
+      result.LICENSE_BIN=LICENSE_BIN||'NAO CONFIGURADO';
+      result.MASTER_KEY_prefix=MASTER_KEY?MASTER_KEY.substring(0,12)+'...':'NAO CONFIGURADO';
+      // Testar leitura
+      await new Promise(resolve=>{
+        jbReq('GET',LICENSE_BIN,null,(err,code,data)=>{
+          if(err) result.read_error=err.message;
+          else if(code!==200) result.read_error='HTTP '+code+' - '+String(data).substring(0,200);
+          else { result.read_ok=true; try{const p=JSON.parse(data);result.licenses_count=Object.keys(p.licenses||p).filter(k=>!k.startsWith('_')).length;}catch(e){result.read_parse_error=e.message;} }
+          resolve();
+        });
+      });
+      // Testar escrita apenas se leitura OK
+      if(result.read_ok){
+        const lics=await getLics();
+        await new Promise(resolve=>{
+          jbReq('PUT',LICENSE_BIN,{licenses:lics},(err,code,data)=>{
+            if(err) result.write_error=err.message;
+            else if(code!==200) result.write_error='HTTP '+code+' - '+String(data).substring(0,300);
+            else result.write_ok=true;
+            resolve();
+          });
+        });
+      }
+      sendJSON(res,200,result);return;
+    }
+
     if(reqPath==='/admin/users-json'&&method==='GET'){
       const lics=await getLics();const now=Date.now();
       const users=[];let stats={total:0,premium:0,trial:0,expired:0,active:0};
