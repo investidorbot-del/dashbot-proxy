@@ -423,7 +423,11 @@ async function loadUsersTable() {
   } catch(e) { console.warn("loadUsersTable error:", e.message); }
 }
 
+// Cache dos usuários para edição
+var _usersCache = [];
+
 function renderUsersFromData(users, stats) {
+  _usersCache = users || [];
   var tb = document.getElementById("usersTable");
   if (!users || !users.length) {
     tb.innerHTML = '<tr><td colspan="7" class="loading">Nenhum usuario cadastrado</td></tr>';
@@ -451,7 +455,7 @@ function renderUsersFromData(users, stats) {
     html += "<td>" + (u.lastSeen || "—") + "</td>";
     html += "<td>" + (prods || "—") + '<br><button class="btn-sm" onclick="addUserProd(\'' + ac + '\')">+ Produto</button></td>';
     html += "<td>";
-    html += '<button class="btn-sm" onclick="editUser(\'' + ac + "','" + sn + "','" + se + "','" + sp + '\')">✏️</button> ';
+    html += '<button class="btn-sm" onclick="editUserFull(\'' + ac + '\')">✏️</button> ';
     html += '<button class="btn-sm" onclick="bonusModal(\'' + ac + "','" + sn + '\')">📅</button> ';
     html += '<button class="btn-sm btn-red" onclick="revogar(\'' + ac + '\')">🚫</button> ';
     html += '<button class="btn-sm" onclick="resetPw(\'' + ac + '\')">↺</button> ';
@@ -679,15 +683,66 @@ async function saveUser() {
 
 // ── Botoes da tabela gerada pelo servidor ─────────────────────────
 function editUser(acct, name, email, phone) {
+  // Compatibilidade — tenta buscar do cache primeiro
+  editUserFull(acct);
+}
+
+function editUserFull(acct) {
+  // Buscar dados completos do cache
+  var u = null;
+  for (var i=0; i<_usersCache.length; i++) {
+    if (String(_usersCache[i].account) === String(acct)) { u = _usersCache[i]; break; }
+  }
   document.getElementById('userModalTitle').textContent = 'Editar Usuario';
   document.getElementById('userModalButton').textContent = 'Salvar Alteracoes';
   document.getElementById('uId').value    = acct;
-  try { document.getElementById('uName').value = decodeURIComponent(name||''); } catch(e) { document.getElementById('uName').value = name||''; }
-  document.getElementById('uEmail').value = email||'';
-  document.getElementById('uPhone').value = phone||'';
-  var c=document.getElementById('productsContainer');
-  c.innerHTML=''; c.appendChild(buildProdRow());
-  document.getElementById('userModal').style.display='block';
+  document.getElementById('uName').value  = u ? (u.name||'') : '';
+  document.getElementById('uEmail').value = u ? (u.email||'') : '';
+  document.getElementById('uPhone').value = u ? (u.phone||'') : '';
+  // Carregar produtos existentes
+  var c = document.getElementById('productsContainer');
+  c.innerHTML = '';
+  var prods = u && u.products && u.products.length ? u.products : [];
+  if (prods.length > 0) {
+    for (var j=0; j<prods.length; j++) {
+      var p = prods[j];
+      // Mapear ID do servidor de volta para ID local
+      var localId = serverIdToLocal(p.id);
+      c.appendChild(buildProdRow({
+        productId: localId,
+        account:   acct,
+        accountType: p.accountType || 'demo',
+        minLots:   p.minLots   || 0,
+        maxLots:   p.maxLots   || 0,
+        instances: p.instances || 1,
+        expiry:    u.endDate   || ''
+      }));
+    }
+  } else {
+    c.appendChild(buildProdRow({ account: acct }));
+  }
+  document.getElementById('userModal').style.display = 'block';
+}
+
+function serverIdToLocal(serverId) {
+  // Converter prod_XXXXXXX para ID local
+  var prods = getProducts();
+  // Tentar pelo serverId guardado
+  for (var i=0; i<prods.length; i++) {
+    if (prods[i].serverId === serverId) return prods[i].id;
+  }
+  // Tentar pelo PROD_MAP reverso
+  var keys = Object.keys(PROD_MAP);
+  for (var i=0; i<keys.length; i++) {
+    if (PROD_MAP[keys[i]] === serverId) {
+      // Encontrar produto local com esse nome
+      var name = keys[i];
+      for (var j=0; j<prods.length; j++) {
+        if (prods[j].name.toUpperCase().replace(/[^A-Z0-9]/g,'') === name) return prods[j].id;
+      }
+    }
+  }
+  return null;
 }
 
 function bonusModal(acct, name) {
