@@ -885,19 +885,18 @@ async function limparBanco() {
   }
 }
 async function deleteUser(id) {
-  if (!confirm('Remover usuário?')) return;
-  // Remover do servidor usando a conta da primeira licença
+  // Esta função só age sobre dados locais do localStorage
+  // Para usuários vindos do servidor, usar o botão 🗑 (delUser(acct))
   const lics = getLicenses().filter(l => l.userId === id);
-  let serverOk = lics.length === 0; // se não tem licenças, ok prosseguir
-  for (const l of lics) {
-    const r = await apiCall('DELETE', '/admin/user', { account: String(l.account) });
-    if (r && r.ok) serverOk = true;
-  }
-  if (!serverOk) {
-    showMsg('msg2', '❌ Erro ao remover usuário do servidor', false);
+  if (lics.length === 0) {
+    // Sem dados locais — não fazer nada (usuário vem do servidor)
+    showMsg('msg2', '⚠️ Use o botão 🗑 na linha do usuário para remover.', false);
     return;
   }
-  // Remover localmente
+  if (!confirm('Remover usuário?')) return;
+  for (const l of lics) {
+    await apiCall('DELETE', '/admin/user', { account: String(l.account) });
+  }
   saveUsers(getUsers().filter(u => u.id !== id));
   saveLicenses(getLicenses().filter(l => l.userId !== id));
   renderUsersTable(); updateStats();
@@ -982,6 +981,38 @@ window.onclick = function(event) {
   if (event.target.className === 'modal') closeUserModal();
 };
 
+// ── Atualizar tabela de usuários sem recarregar a página ──────────
+async function refreshUsersTable() {
+  try {
+    // Buscar dados atualizados do servidor
+    const r = await fetch(SERVER + '/admin', { headers: { 'Authorization': AUTH } });
+    if (r.ok) {
+      const html = await r.text();
+      // Extrair tbody
+      const match = html.match(/<tbody>([\s\S]*?)<\/tbody>/);
+      if (match && match[1]) {
+        document.getElementById('usersTable').innerHTML = match[1];
+      }
+      // Extrair stats
+      const nums = html.match(/>(\d+)<\/div><div class="[ln]"/g);
+      const statsMatch = html.match(/id="(total|premium|trial|expired|active)-users">(\d+)</g);
+      if (statsMatch) {
+        statsMatch.forEach(m => {
+          const id = m.match(/id="([^"]+)">(\d+)/);
+          if (id) {
+            const el = document.getElementById(id[1]);
+            if (el) el.textContent = id[2];
+          }
+        });
+      }
+    }
+  } catch(e) {
+    console.warn('refreshUsersTable error:', e);
+    // Fallback: atualizar só a tabela local
+    renderUsersTable(); updateStats();
+  }
+}
+
 // ══════════════════════════════════════════════════════════════════
 //  FUNÇÕES DOS BOTÕES DA TABELA DE USUÁRIOS
 //  (chamadas pelas rows geradas pelo servidor via __SERVER_BOOTSTRAP__)
@@ -1040,7 +1071,7 @@ async function saveEdit() {
   const r = await apiCall('PUT', '/admin/user', { account: acct, name, email, phone });
   if (r && r.ok) {
     showMsg('msgEdit', '✅ Salvo!', true);
-    setTimeout(() => { document.getElementById('editUserModal').style.display='none'; location.reload(); }, 1000);
+    setTimeout(() => { document.getElementById('editUserModal').style.display='none'; refreshUsersTable(); }, 1000);
   } else {
     showMsg('msgEdit', '❌ Erro: ' + (r?.error||''), false);
   }
@@ -1109,7 +1140,7 @@ async function saveBonus() {
   const r = await apiCall('POST','/admin/license',{account:_bonusAcct,name,endDate});
   if (r && r.ok) {
     showMsg('msgBonus','✅ Até '+r.expiresStr,true);
-    setTimeout(()=>{document.getElementById('bonusUserModal').style.display='none';location.reload();},1200);
+    setTimeout(()=>{document.getElementById('bonusUserModal').style.display='none';refreshUsersTable();},1200);
   } else showMsg('msgBonus','❌ '+(r?.error||'Erro'),false);
 }
 
@@ -1118,7 +1149,7 @@ async function saveLicLifetime() {
   const r = await apiCall('POST','/admin/license',{account:_bonusAcct,name,lifetime:true});
   if (r && r.ok) {
     showMsg('msgBonus','✅ Licença Vitalícia aplicada!',true);
-    setTimeout(()=>{document.getElementById('bonusUserModal').style.display='none';location.reload();},1200);
+    setTimeout(()=>{document.getElementById('bonusUserModal').style.display='none';refreshUsersTable();},1200);
   } else showMsg('msgBonus','❌ '+(r?.error||'Erro'),false);
 }
 
@@ -1128,7 +1159,7 @@ async function revogar(acct) {
   const r = await apiCall('DELETE','/admin/license',{account:acct});
   if (r && r.ok) {
     showMsg('msg2','✅ Licença revogada!',true);
-    setTimeout(()=>location.reload(),1000);
+    setTimeout(()=>refreshUsersTable(),1000);
   } else showMsg('msg2','❌ Erro ao revogar',false);
 }
 
@@ -1149,7 +1180,17 @@ async function delUser(acct) {
     // Limpar localStorage local também
     const lics = getLicenses().filter(l => String(l.account) !== String(acct));
     saveLicenses(lics);
-    setTimeout(()=>location.reload(),1000);
+    // Remover linha da tabela diretamente sem recarregar
+    const rows = document.querySelectorAll('#usersTable tr');
+    rows.forEach(row => {
+      if (row.textContent.includes(String(acct))) {
+        row.style.transition = 'opacity 0.3s';
+        row.style.opacity = '0';
+        setTimeout(() => row.remove(), 300);
+      }
+    });
+    // Atualizar contadores
+    setTimeout(() => refreshUsersTable(), 800);
   } else {
     showMsg('msg2','❌ Erro ao remover: '+(r?.error||'Servidor indisponível'),false);
   }
@@ -1248,7 +1289,7 @@ async function saveProd() {
   });
   if (r && r.ok) {
     showMsg('msgProd','✅ Produto atribuído!',true);
-    setTimeout(()=>{document.getElementById('addProdModal').style.display='none';location.reload();},1000);
+    setTimeout(()=>{document.getElementById('addProdModal').style.display='none';refreshUsersTable();},1000);
   } else showMsg('msgProd','❌ '+(r?.error||'Erro'),false);
 }
 </script>
