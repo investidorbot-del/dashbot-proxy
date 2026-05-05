@@ -6,8 +6,8 @@
 <title>Dashbot Admin</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;background:#0d1117;color:#e6edf3;padding:20px}
-h1{color:#58a6ff;margin-bottom:4px;font-size:22px;display:flex;align-items:center;gap:12px} /* Ajustado para alinhar logo e texto */
+body{font-family:system-ui,sans-serif;background:#0d1117;color:#e6edf3;padding:20px;font-size:13px}
+h1{color:#58a6ff;margin-bottom:4px;font-size:22px;display:flex;align-items:center;gap:12px}
 .sub{color:#8b949e;font-size:13px;margin-bottom:20px}
 .stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
 .stat{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px 20px;min-width:100px;text-align:center}
@@ -24,9 +24,8 @@ tr:hover td{background:#1c2128}
 .btn:hover{background:#388bfd}
 .btn-sm{background:#21262d;color:#e6edf3;border:1px solid #30363d;padding:3px 7px;border-radius:4px;cursor:pointer;font-size:10px;margin:1px}
 .btn-sm:hover{background:#30363d}
-.btn-red{background:#f85149;color:white!important}
-.btn-green{background:#10b981;color:white!important}
-.btn-blue{background:#1f6feb;color:white!important}
+.btn-red{background:#f85149!important;color:white!important;border-color:#f85149!important}
+.btn-green{background:#10b981!important;color:white!important}
 .form-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
 .fg{display:flex;flex-direction:column;gap:3px}
 label{font-size:10px;color:#8b949e;font-weight:600;text-transform:uppercase}
@@ -35,294 +34,206 @@ input:focus,select:focus{outline:none;border-color:#388bfd}
 .msg{padding:7px 12px;border-radius:6px;font-size:12px;margin-bottom:10px;display:none}
 .msg.ok{background:#0d2e1f;border:1px solid #10b981;color:#10b981}
 .msg.err{background:#2d1117;border:1px solid #f85149;color:#f85149}
-
-/* Modal */
-.modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background-color:rgba(13,17,23,0.8)}
-.modal-content{background-color:#161b22;margin:3% auto;padding:20px;border:1px solid #30363d;border-radius:10px;width:96%;max-width:960px}
-.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
-.modal-title{color:#58a6ff;font-weight:700}
-.close{color:#8b949e;font-size:24px;font-weight:700;cursor:pointer}
-.close:hover{color:#e6edf3}
-.modal-body{display:flex;flex-direction:column;gap:12px}
-.account-row{display:flex;gap:8px;align-items:flex-end}
-.remove-account{background:#f85149;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer}
+.modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background:rgba(13,17,23,0.85);overflow-y:auto}
+.modal-box{background:#161b22;margin:4% auto;padding:20px;border:1px solid #30363d;border-radius:10px;width:96%;max-width:700px;position:relative}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
+.modal-title{color:#58a6ff;font-weight:700;font-size:14px}
+.mclose{color:#8b949e;font-size:24px;font-weight:700;cursor:pointer;line-height:1}
+.mclose:hover{color:#e6edf3}
+.prod-row{display:flex;gap:6px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap;background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:8px}
+.cfg-overlay{display:none;position:fixed;inset:0;background:rgba(13,17,23,.97);z-index:9999;align-items:center;justify-content:center}
+.cfg-box{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:28px;width:90%;max-width:400px}
 .loading{color:#8b949e;text-align:center;padding:10px}
-.product-account-row{display:flex;gap:6px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap;background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:8px}
-.remove-product{background:#f85149;color:white;border:none;padding:3px 7px;border-radius:4px;cursor:pointer;font-size:12px}
 </style>
 </head>
 <body>
-<!-- LOGO E TÍTULO ATUALIZADOS -->
+
 <h1>
-  <img src="data:image/png;base64,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" alt="iBot" style="height: 32px; width: auto; border-radius: 4px;"> 
+  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231f6feb'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-size='18' font-weight='bold' fill='white' font-family='system-ui'%3ED%3C/text%3E%3C/svg%3E" alt="D" style="border-radius:6px">
   Dashbot Admin
 </h1>
-<p class="sub">Licenças · Usuários · Produtos</p>
+<p class="sub">Licenças · Usuários · Produtos &nbsp;|&nbsp; <button class="btn-sm" onclick="showCfg()">⚙️ Config</button> &nbsp; <button class="btn-sm" onclick="reloadPage()">🔄 Atualizar</button></p>
 
 <div class="stats">
-  <div class="stat"><div class="n" id="total-users">0</div><div class="l">Total</div></div>
-  <div class="stat"><div class="n" style="color:#10b981" id="premium-users">0</div><div class="l">Teste</div></div>
-  <div class="stat"><div class="n" style="color:#3b82f6" id="trial-users">0</div><div class="l">Assinantes</div></div>
-  <div class="stat"><div class="n" style="color:#ef4444" id="expired-users">0</div><div class="l">Vitalícios</div></div>
-  <div class="stat"><div class="n" style="color:#f0c800" id="active-users">0</div><div class="l">Expirados</div></div>
+  <div class="stat"><div class="n" id="st-total">0</div><div class="l">Total</div></div>
+  <div class="stat"><div class="n" style="color:#10b981" id="st-premium">0</div><div class="l">Premium</div></div>
+  <div class="stat"><div class="n" style="color:#3b82f6" id="st-trial">0</div><div class="l">Trial</div></div>
+  <div class="stat"><div class="n" style="color:#ef4444" id="st-expired">0</div><div class="l">Expirados</div></div>
+  <div class="stat"><div class="n" style="color:#f0c800" id="st-active">0</div><div class="l">Ativos 7d</div></div>
 </div>
 
+<!-- INSERIR MANUAL -->
 <div class="card">
-  <div class="card-title">🎁 Inserir Manualmente (Bônus / Trial)</div>
-  <div id="msg2" class="msg"></div>
+  <div class="card-title">🎁 Inserir Manualmente</div>
+  <div id="msg-manual" class="msg"></div>
   <div class="form-row">
-    <div class="fg">
-      <label>Nome</label>
-      <input type="text" id="mName" placeholder="Nome" style="width:150px">
-    </div>
-    <div class="fg">
-      <label>Produto</label>
-      <select id="mProduct" style="width:150px">
-        <option value="">Selecione...</option>
-      </select>
-    </div>
-    <div class="fg">
-      <label>Conta MT5</label>
-      <input type="number" id="mAcc" placeholder="12345678" style="width:130px">
-    </div>
-    <div class="fg">
-      <label>Tipo de Conta</label>
-      <select id="mAccountType" style="width:100px">
-        <option value="demo">Demo</option>
-        <option value="real">Real</option>
-      </select>
-    </div>
-    <div class="fg">
-      <label>Data Final</label>
-      <input type="date" id="mExpiry" style="width:140px">
-    </div>
-    <button class="btn" style="background:#10b981" onclick="inserirManual()">➕ Inserir</button>
-    <button class="btn btn-red" onclick="limparBanco()" style="margin-left:auto" title="Remove TODOS os usuários do banco para testes">🗑 Limpar Banco</button>
+    <div class="fg"><label>Nome</label><input id="m-name" placeholder="Nome" style="width:150px"></div>
+    <div class="fg"><label>Produto</label><select id="m-prod" style="width:140px"><option value="">Selecione...</option></select></div>
+    <div class="fg"><label>Conta MT5</label><input type="number" id="m-acct" placeholder="12345678" style="width:130px"></div>
+    <div class="fg"><label>Tipo</label><select id="m-type" style="width:90px"><option value="demo">Demo</option><option value="real">Real</option></select></div>
+    <div class="fg"><label>Data Final</label><input type="date" id="m-expiry" style="width:140px"></div>
+    <button class="btn" style="background:#10b981" onclick="doInserir()">➕ Inserir</button>
+    <button class="btn btn-red" onclick="doWipe()" style="margin-left:auto">🗑 Limpar Banco</button>
   </div>
 </div>
 
-<div class="card">
-  <div class="card-title">📦 Produtos (EAs, Indicadores, etc.)</div>
-  <div id="msg3" class="msg"></div>
-  <div class="form-row" style="margin-bottom:12px">
-    <div class="fg">
-      <label>Nome</label>
-      <input type="text" id="pName" placeholder="Nome do produto" style="width:140px">
-    </div>
-    <div class="fg">
-      <label>Tipo</label>
-      <select id="pType" style="width:120px">
-        <option value="ea">Expert Advisor</option>
-        <option value="indicator">Indicador</option>
-        <option value="dashboard">Dashboard</option>
-        <option value="other">Outro</option>
-      </select>
-    </div>
-    <div class="fg">
-      <label>Descrição</label>
-      <input type="text" id="pDesc" placeholder="Opcional" style="width:180px">
-    </div>
-    <button class="btn" onclick="addProd()">+ Produto</button>
-  </div>
-  <table>
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Nome</th>
-        <th>Tipo</th>
-        <th>Descrição</th>
-        <th>Ativo</th>
-        <th>Ações</th>
-      </tr>
-    </thead>
-    <tbody id="productsTable">
-      <tr><td colspan="6" class="loading">Carregando produtos...</td></tr>
-    </tbody>
-  </table>
-</div>
-
+<!-- USUÁRIOS -->
 <div class="card">
   <div class="card-title">👥 Usuários Registrados</div>
-  <div class="form-row" style="margin-bottom:15px; justify-content: space-between;">
-    <button class="btn" onclick="openAddUserModal()">+ Adicionar Usuário</button>
-    <div class="fg">
-      <label>Buscar Usuário</label>
-      <input type="text" id="searchUser" placeholder="Nome, email ou telefone..." oninput="renderUsersTable()" style="width:200px">
-    </div>
+  <div class="form-row" style="margin-bottom:12px;justify-content:space-between">
+    <button class="btn" onclick="openAddUser()">+ Adicionar Usuário</button>
+    <input id="search-user" placeholder="Buscar..." oninput="filterTable()" style="width:200px">
   </div>
+  <div id="msg-users" class="msg"></div>
+  <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>Conta</th><th>Nome / Contato</th><th>Plano</th><th>Expira</th><th>Último acesso</th><th>Produtos</th><th>Ações</th></tr></thead>
+      <tbody id="users-tbody"><tr><td colspan="7" class="loading">Carregando...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- PRODUTOS -->
+<div class="card">
+  <div class="card-title">📦 Catálogo de Produtos</div>
+  <div id="msg-prod" class="msg"></div>
   <table>
-    <thead>
-      <tr>
-        <th>Nome</th>
-        <th>Email</th>
-        <th>Telefone</th>
-        <th>Produtos</th>
-        <th>Contas</th>
-        <th>Validades</th>
-        <th>Ações</th>
-      </tr>
-    </thead>
-    <tbody id="usersTable">
-      <tr><td colspan="7" class="loading">Carregando usuários...</td></tr>
-    </tbody>
+    <thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th>Min Lote</th><th>Max Lote</th><th>Instâncias</th><th>Descrição</th></tr></thead>
+    <tbody id="prod-tbody"><tr><td colspan="7" class="loading">Carregando...</td></tr></tbody>
   </table>
 </div>
 
-<!-- Modal para Adicionar/Editar Usuário -->
-<div id="userModal" class="modal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h3 class="modal-title" id="userModalTitle">➕ Adicionar Usuário</h3>
-      <span class="close" onclick="closeUserModal()">&times;</span>
-    </div>
-    <div class="modal-body">
-      <div id="modalMsg" class="msg"></div>
-      <input type="hidden" id="uId" value="">
-      <div class="form-row">
-        <div class="fg" style="width:100%">
-          <label>Nome</label>
-          <input type="text" id="uName" placeholder="Nome completo" style="width:100%">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="fg" style="width:100%">
-          <label>Email</label>
-          <input type="email" id="uEmail" placeholder="email@exemplo.com" style="width:100%">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="fg" style="width:100%">
-          <label>Telefone</label>
-          <input type="tel" id="uPhone" placeholder="(11) 99999-9999" style="width:100%">
-        </div>
-      </div>
-      
-      <div class="card-title">Produtos e Contas</div>
-      <div id="productsContainer">
-        <div class="product-account-row">
-          <div class="fg" style="flex:2">
-            <label>Produto</label>
-            <select class="user-product" style="width:100%">
-              <option value="">Selecione...</option>
-            </select>
-          </div>
-          <div class="fg" style="flex:1">
-            <label>Conta MT5</label>
-            <input type="number" class="user-account" placeholder="12345678">
-          </div>
-          <div class="fg" style="width:100px">
-            <label>Tipo</label>
-            <select class="user-account-type">
-              <option value="demo">Demo</option>
-              <option value="real">Real</option>
-            </select>
-          </div>
-          <div class="fg" style="flex:1">
-            <label>Expiração</label>
-            <input type="date" class="product-expiry" style="width:100%">
-          </div>
-          <button class="remove-product" onclick="removeProduct(this)">×</button>
-        </div>
-      </div>
-      <button class="btn-sm" onclick="addProductField()" style="margin-top:8px">+ Adicionar Produto</button>
-      
-      <button class="btn" id="userModalButton" onclick="saveUser()" style="margin-top:15px">Adicionar Usuário</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ OVERLAY DE CONFIGURAÇÃO (aparece se não tiver credenciais) ══ -->
-<div id="configOverlay" style="display:none;position:fixed;inset:0;background:rgba(13,17,23,0.97);z-index:9999;align-items:center;justify-content:center;flex-direction:column">
-  <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:28px;width:90%;max-width:400px">
-    <h2 style="color:#58a6ff;margin-bottom:4px;font-size:18px">⚙️ Configurar Acesso Admin</h2>
-    <p style="color:#8b949e;font-size:12px;margin-bottom:20px">Insira as credenciais do seu servidor Dashbot</p>
-    <div id="cfgMsg" style="color:#f85149;font-size:12px;min-height:18px;margin-bottom:10px"></div>
+<!-- MODAL: Config -->
+<div class="cfg-overlay" id="cfg-overlay">
+  <div class="cfg-box">
+    <h3 style="color:#58a6ff;margin-bottom:16px">⚙️ Configurar Acesso Admin</h3>
+    <div id="cfg-msg" style="color:#f85149;font-size:12px;min-height:18px;margin-bottom:8px"></div>
     <div style="display:flex;flex-direction:column;gap:10px">
-      <div style="display:flex;flex-direction:column;gap:3px">
-        <label style="font-size:10px;color:#8b949e;font-weight:600;text-transform:uppercase">URL do Servidor</label>
-        <input id="cfgUrl" style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:7px 10px;border-radius:5px;font-size:13px" value="https://dashbot.investidorbot.com">
-      </div>
-      <div style="display:flex;flex-direction:column;gap:3px">
-        <label style="font-size:10px;color:#8b949e;font-weight:600;text-transform:uppercase">Usuário Admin</label>
-        <input id="cfgUser" style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:7px 10px;border-radius:5px;font-size:13px" placeholder="admin">
-      </div>
-      <div style="display:flex;flex-direction:column;gap:3px">
-        <label style="font-size:10px;color:#8b949e;font-weight:600;text-transform:uppercase">Senha Admin</label>
-        <input id="cfgPass" type="password" style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:7px 10px;border-radius:5px;font-size:13px" placeholder="••••••••"
-          onkeydown="if(event.key==='Enter')saveConfig()">
-      </div>
-      <button onclick="saveConfig()" style="background:#1f6feb;color:#fff;border:none;padding:10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;margin-top:6px">
-        🔗 Conectar
-      </button>
+      <div class="fg"><label>URL do Servidor</label><input id="cfg-url" style="width:100%"></div>
+      <div class="fg"><label>Usuário</label><input id="cfg-user" style="width:100%"></div>
+      <div class="fg"><label>Senha</label><input id="cfg-pass" type="password" style="width:100%" onkeydown="if(event.key==='Enter')doSaveCfg()"></div>
+      <button class="btn" onclick="doSaveCfg()" style="width:100%;margin-top:4px">🔗 Conectar</button>
     </div>
   </div>
 </div>
 
-<!-- Botão discreto para reconfigurar (canto superior direito) -->
-<div style="position:fixed;top:12px;right:16px;z-index:1000">
-  <button onclick="clearConfig()" style="background:#21262d;color:#8b949e;border:1px solid #30363d;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:10px">⚙️ Config</button>
+<!-- MODAL: Adicionar/Editar Usuário -->
+<div class="modal" id="modal-user">
+  <div class="modal-box" style="max-width:900px">
+    <div class="modal-head">
+      <span class="modal-title" id="modal-user-title">➕ Adicionar Usuário</span>
+      <span class="mclose" onclick="closeModal('modal-user')">&times;</span>
+    </div>
+    <div id="msg-modal-user" class="msg"></div>
+    <input type="hidden" id="u-editing-acct">
+    <div class="form-row" style="margin-bottom:8px">
+      <div class="fg" style="flex:1"><label>Nome *</label><input id="u-name" style="width:100%"></div>
+      <div class="fg" style="flex:1"><label>Email</label><input id="u-email" type="email" style="width:100%"></div>
+      <div class="fg" style="flex:1"><label>Telefone</label><input id="u-phone" style="width:100%"></div>
+    </div>
+    <div style="color:#58a6ff;font-size:11px;font-weight:700;text-transform:uppercase;margin:12px 0 8px">Produtos e Contas</div>
+    <div id="u-prods-container"></div>
+    <button class="btn-sm" onclick="addProdRow()" style="margin-bottom:12px">+ Adicionar Produto</button>
+    <div style="border-top:1px solid #30363d;padding-top:12px;margin-top:4px">
+      <button class="btn" id="u-save-btn" onclick="doSaveUser()">Adicionar Usuário</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Licença -->
+<div class="modal" id="modal-lic">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-head">
+      <span class="modal-title">📅 Gerenciar Licença</span>
+      <span class="mclose" onclick="closeModal('modal-lic')">&times;</span>
+    </div>
+    <div id="msg-modal-lic" class="msg"></div>
+    <input type="hidden" id="lic-acct">
+    <div class="fg" style="margin-bottom:10px"><label>Nome</label><input id="lic-name" style="width:100%"></div>
+    <div class="form-row" style="margin-bottom:10px">
+      <div class="fg"><label>Atalhos</label>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="btn-sm" onclick="licAddDays(7)">+7d</button>
+          <button class="btn-sm" onclick="licAddDays(15)">+15d</button>
+          <button class="btn-sm" onclick="licAddDays(30)">+30d</button>
+          <button class="btn-sm" onclick="licAddDays(90)">+3m</button>
+          <button class="btn-sm" onclick="licAddDays(180)">+6m</button>
+          <button class="btn-sm" onclick="licAddDays(365)">+1a</button>
+        </div>
+      </div>
+    </div>
+    <div class="fg" style="margin-bottom:14px"><label>Data Final</label><input type="date" id="lic-date" style="width:160px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-sm" onclick="closeModal('modal-lic')">Cancelar</button>
+      <button class="btn" style="background:#7c3aed" onclick="doLicLifetime()">♾ Vitalícia</button>
+      <button class="btn btn-green" onclick="doSaveLic()">✓ Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Editar Usuário -->
+<div class="modal" id="modal-edit">
+  <div class="modal-box" style="max-width:500px">
+    <div class="modal-head">
+      <span class="modal-title">✏️ Editar Usuário</span>
+      <span class="mclose" onclick="closeModal('modal-edit')">&times;</span>
+    </div>
+    <div id="msg-modal-edit" class="msg"></div>
+    <input type="hidden" id="edit-acct">
+    <div class="fg" style="margin-bottom:8px"><label>Nome</label><input id="edit-name" style="width:100%"></div>
+    <div class="fg" style="margin-bottom:8px"><label>Email</label><input id="edit-email" type="email" style="width:100%"></div>
+    <div class="fg" style="margin-bottom:14px"><label>Telefone</label><input id="edit-phone" style="width:100%"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-sm" onclick="closeModal('modal-edit')">Cancelar</button>
+      <button class="btn btn-green" onclick="doSaveEdit()">✓ Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Atribuir Produto -->
+<div class="modal" id="modal-prod">
+  <div class="modal-box" style="max-width:600px">
+    <div class="modal-head">
+      <span class="modal-title">📦 Atribuir Produto</span>
+      <span class="mclose" onclick="closeModal('modal-prod')">&times;</span>
+    </div>
+    <div id="msg-modal-prod" class="msg"></div>
+    <input type="hidden" id="prod-acct">
+    <div class="form-row" style="margin-bottom:8px">
+      <div class="fg" style="flex:2"><label>Produto *</label><select id="prod-sel" style="width:100%"><option value="">Selecione...</option></select></div>
+      <div class="fg" style="width:90px"><label>Tipo</label><select id="prod-type"><option value="demo">Demo</option><option value="real">Real</option></select></div>
+    </div>
+    <div class="form-row" style="margin-bottom:8px">
+      <div class="fg" style="width:80px"><label>Lote Mín</label><input type="number" id="prod-min" value="0" step="0.01" min="0"></div>
+      <div class="fg" style="width:80px"><label>Lote Máx</label><input type="number" id="prod-max" value="0" step="0.01" min="0"></div>
+      <div class="fg" style="width:80px"><label>Instâncias</label><input type="number" id="prod-inst" value="1" min="1"></div>
+    </div>
+    <div class="form-row" style="margin-bottom:14px">
+      <div class="fg" style="flex:1"><label>Conta Real</label><input id="prod-real" placeholder="opcional"></div>
+      <div class="fg" style="flex:1"><label>Conta Demo</label><input id="prod-demo" placeholder="opcional"></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-sm" onclick="closeModal('modal-prod')">Cancelar</button>
+      <button class="btn btn-green" onclick="doSaveProd()">✓ Atribuir</button>
+    </div>
+  </div>
 </div>
 
 <script>
-// ══════════════════════════════════════════════════════════════════
-//  DASHBOT ADMIN — Comunicação direta com o servidor
-// ══════════════════════════════════════════════════════════════════
-
-// ── Configuração do servidor (editável pelo usuário) ──────────────
+// ── Config ────────────────────────────────────────────────────────
 let SERVER = localStorage.getItem('db_server') || 'https://dashbot.investidorbot.com';
 let AUTH   = localStorage.getItem('db_auth')   || '';
+let PRODUCTS_CACHE = [];
 
-// Mostrar tela de config se não tiver credenciais salvas
-function checkCredentials() {
-  if (!AUTH) {
-    document.getElementById('configOverlay').style.display = 'flex';
-  }
-}
-
-function saveConfig() {
-  const url  = document.getElementById('cfgUrl').value.trim().replace(/\/$/, '');
-  const user = document.getElementById('cfgUser').value.trim();
-  const pass = document.getElementById('cfgPass').value;
-  if (!url || !user || !pass) { document.getElementById('cfgMsg').textContent = '❌ Preencha todos os campos'; return; }
-  SERVER = url;
-  AUTH   = 'Basic ' + btoa(user + ':' + pass);
-  localStorage.setItem('db_server', SERVER);
-  localStorage.setItem('db_auth',   AUTH);
-  _serverAuthHeader = AUTH;
-  _serverMode = true;
-  document.getElementById('configOverlay').style.display = 'none';
-  // Recarregar produtos e usuários do servidor
-  await loadServerProducts();
-  await refreshUsersTable();
-}
-
-function clearConfig() {
-  localStorage.removeItem('db_auth');
-  localStorage.removeItem('db_server');
-  AUTH = ''; SERVER = 'https://dashbot.investidorbot.com';
-  document.getElementById('cfgUrl').value  = SERVER;
-  document.getElementById('cfgUser').value = '';
-  document.getElementById('cfgPass').value = '';
-  document.getElementById('configOverlay').style.display = 'flex';
-}
-
-// Map: ID local do admin → ID real do servidor
-// O admin usa nomes simples; o servidor usa prod_1000000XXX
-const PRODUCT_ID_MAP = {
-  'HULK':    'prod_1000000001',
-  'TORNADO': 'prod_1000000002',
-  'ADAM':    'prod_1000000003',
-  'SNAKE':   'prod_1000000004',
-  'KRYOS':   'prod_1000000005',
-  'IRON':    'prod_1000000006',
-  'DASHBOT': 'prod_1000000007',
+// IDs do servidor por nome de produto
+const PROD_MAP = {
+  'HULK':'prod_1000000001','TORNADO':'prod_1000000002','ADAM':'prod_1000000003',
+  'SNAKE':'prod_1000000004','KRYOS':'prod_1000000005','IRON':'prod_1000000006','DASHBOT':'prod_1000000007'
 };
 
-// Cache local dos produtos do servidor
-let _serverProducts = [];
-
-// ── API helper ────────────────────────────────────────────────────
-async function apiCall(method, path, body) {
+// ── API ───────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  if (!AUTH) { showCfg(); return null; }
   try {
     const res = await fetch(SERVER + path, {
       method,
@@ -330,986 +241,418 @@ async function apiCall(method, path, body) {
       body: body ? JSON.stringify(body) : undefined
     });
     if (res.status === 401) {
-      // Credenciais erradas — limpar e pedir novamente
       localStorage.removeItem('db_auth');
       AUTH = '';
-      document.getElementById('cfgUrl').value  = SERVER;
-      document.getElementById('cfgUser').value = '';
-      document.getElementById('cfgPass').value = '';
-      document.getElementById('cfgMsg').textContent = '❌ Credenciais inválidas. Tente novamente.';
-      document.getElementById('configOverlay').style.display = 'flex';
+      document.getElementById('cfg-msg').textContent = '❌ Credenciais inválidas';
+      showCfg();
       return null;
     }
-    return await res.json();
-  } catch (e) {
-    console.error('API error:', e);
-    showMsg('msg2', '❌ Erro ao conectar: ' + e.message, false);
+    return res.json();
+  } catch(e) {
+    showMsg('msg-users', '❌ Erro: ' + e.message, false);
     return null;
   }
 }
 
-// Converte ID local (número ou nome) para ID do servidor
-function toServerId(localId) {
-  // Se já é um prod_ ID, retornar direto
-  if (String(localId).startsWith('prod_')) return String(localId);
-  // Buscar o produto local pelo id
-  const localProds = getProducts();
-  const p = localProds.find(x => x.id == localId);
-  if (!p) return null;
-  const upperName = p.name.toUpperCase();
-  // 1. Tentar mapa direto (IRON, HULK, etc.)
-  if (PRODUCT_ID_MAP[upperName]) return PRODUCT_ID_MAP[upperName];
-  // 2. Tentar com trim e variações (Iron → IRON)
-  const trimmed = upperName.replace(/[^A-Z0-9]/g,'');
-  for (const [k,v] of Object.entries(PRODUCT_ID_MAP)) {
-    if (k.replace(/[^A-Z0-9]/g,'') === trimmed) return v;
-  }
-  // 3. Tentar encontrar nos produtos do servidor pelo nome
-  if (_serverProducts.length > 0) {
-    const sp = _serverProducts.find(x => x.name.toUpperCase().replace(/[^A-Z0-9]/g,'') === trimmed);
-    if (sp) return sp.id;
-  }
-  // 4. Se o produto foi sincronizado do servidor e tem id próprio, pode já ser prod_XXX
-  // Verificar se o nome bate com algum produto do servidor
-  return null;
-}
-
-// ── DB_KEYS — localStorage (mantido para compatibilidade visual) ──
-const DB_KEYS = { PRODUCTS: 'dashbot_products', USERS: 'dashbot_users', LICENSES: 'dashbot_licenses' };
-const INITIAL_PRODUCTS = [
-  { id: 1, name: 'HULK',    type: 'Expert Advisor', description: 'Robô de trading para futuros', active: true },
-  { id: 2, name: 'TORNADO', type: 'Expert Advisor', description: 'Robô de alta frequência',      active: true },
-  { id: 3, name: 'ADAM',    type: 'Expert Advisor', description: 'Robô para scalp',               active: true },
-  { id: 4, name: 'SNAKE',   type: 'Indicador',      description: 'Indicador de tendências',       active: true },
-  { id: 5, name: 'KRYOS',   type: 'Expert Advisor', description: 'Robô multifuncional',           active: true },
-  { id: 6, name: 'IRON',    type: 'Expert Advisor', description: 'Robô para forex',               active: true },
-  { id: 7, name: 'OMEGABOT',type: 'Expert Advisor', description: 'Robô completo',                 active: true },
-  { id: 8, name: 'DASHBOT', type: 'Dashboard',      description: 'Painel de controle',            active: true }
-];
-
-function showMsg(id, msg, ok) {
+// ── Helpers ───────────────────────────────────────────────────────
+function showMsg(id, txt, ok) {
   const el = document.getElementById(id);
-  el.textContent = msg;
+  if (!el) return;
+  el.textContent = txt;
   el.className = 'msg ' + (ok ? 'ok' : 'err');
   el.style.display = 'block';
-  setTimeout(() => el.style.display = 'none', 4000);
+  setTimeout(() => el.style.display = 'none', 5000);
 }
 
-// ── CRUD local (localStorage) ─────────────────────────────────────
-function initializeDatabase() {
-  if (!localStorage.getItem(DB_KEYS.PRODUCTS)) localStorage.setItem(DB_KEYS.PRODUCTS, JSON.stringify(INITIAL_PRODUCTS));
-  if (!localStorage.getItem(DB_KEYS.USERS))    localStorage.setItem(DB_KEYS.USERS,    JSON.stringify([]));
-  if (!localStorage.getItem(DB_KEYS.LICENSES)) localStorage.setItem(DB_KEYS.LICENSES, JSON.stringify([]));
-}
-function getProducts()   { return JSON.parse(localStorage.getItem(DB_KEYS.PRODUCTS) || '[]'); }
-function getUsers()      { return JSON.parse(localStorage.getItem(DB_KEYS.USERS)    || '[]'); }
-function getLicenses()   { return JSON.parse(localStorage.getItem(DB_KEYS.LICENSES) || '[]'); }
-function saveProducts(p) { localStorage.setItem(DB_KEYS.PRODUCTS, JSON.stringify(p)); }
-function saveUsers(u)    { localStorage.setItem(DB_KEYS.USERS,    JSON.stringify(u)); }
-function saveLicenses(l) { localStorage.setItem(DB_KEYS.LICENSES, JSON.stringify(l)); }
-
-// ── Dropdowns ─────────────────────────────────────────────────────
-function loadProductsDropdown(selector) {
-  const products = getProducts();
-  document.querySelectorAll(selector).forEach(dd => {
-    dd.innerHTML = '<option value="">Selecione...</option>';
-    products.filter(p => p.active).forEach(p => {
-      const o = document.createElement('option');
-      o.value = p.id; o.textContent = p.name; dd.appendChild(o);
-    });
-  });
-}
-function loadProductsDropdownElement(dd, selectedValue = '') {
-  const products = getProducts();
-  dd.innerHTML = '<option value="">Selecione...</option>';
-  products.filter(p => p.active).forEach(p => {
-    const o = document.createElement('option');
-    o.value = p.id; o.textContent = p.name; o.selected = (p.id == selectedValue); dd.appendChild(o);
-  });
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
 }
 
-// ── Tabela de Produtos ────────────────────────────────────────────
-function renderProductsTable() {
-  const table = document.getElementById('productsTable');
-  const products = getProducts();
-  table.innerHTML = '';
-  if (products.length === 0) { table.innerHTML = '<tr><td colspan="6" class="loading">Nenhum produto cadastrado</td></tr>'; return; }
-  products.forEach(p => {
-    const row = document.createElement('tr');
-    row.innerHTML = `<td>${p.id}</td><td>${p.name}</td><td>${p.type}</td><td>${p.description||'-'}</td><td>${p.active?'✅':'❌'}</td>
-      <td><button class="btn-sm btn-blue" onclick="editProduct(${p.id})">Editar</button>
-          <button class="btn-sm" onclick="toggleProduct(${p.id})">${p.active?'Desativar':'Ativar'}</button>
-          <button class="btn-sm btn-red" onclick="delProd(${p.id})">Excluir</button></td>`;
-    table.appendChild(row);
-  });
+function openModal(id) {
+  document.getElementById(id).style.display = 'block';
 }
 
-// ── Tabela de Usuários ────────────────────────────────────────────
-function renderUsersTable() {
-  const table = document.getElementById('usersTable');
-  const searchTerm = document.getElementById('searchUser').value.toLowerCase();
-  const users = getUsers();
-  const licenses = getLicenses();
-  const products = getProducts();
-  table.innerHTML = '';
-  const filtered = users.filter(u =>
-    u.name.toLowerCase().includes(searchTerm) ||
-    (u.email && u.email.toLowerCase().includes(searchTerm)) ||
-    (u.phone && u.phone.toLowerCase().includes(searchTerm))
-  );
-  if (filtered.length === 0) { table.innerHTML = '<tr><td colspan="7" class="loading">Nenhum usuário encontrado</td></tr>'; return; }
-  filtered.forEach(user => {
-    const userLics = licenses.filter(l => l.userId === user.id);
-    const prodsInfo = userLics.map(l => { const p = products.find(x => x.id === l.productId); return p ? p.name : 'N/A'; }).join(', ');
-    const acctsInfo = userLics.map(l => `${l.account} (${l.accountType})`).join(', ');
-    const expInfo   = userLics.map(l => l.expiry || '-').join(', ');
-    const row = document.createElement('tr');
-    row.innerHTML = `<td>${user.name}</td><td>${user.email||'-'}</td><td>${user.phone||'-'}</td>
-      <td>${prodsInfo}</td><td>${acctsInfo}</td><td>${expInfo}</td>
-      <td><button class="btn-sm btn-blue" onclick="openEditUserModal(${user.id})">Editar</button>
-          <button class="btn-sm btn-red" onclick="deleteUser(${user.id})">Excluir</button></td>`;
-    table.appendChild(row);
-  });
-}
-
-function updateStats() {
-  const users = getUsers();
-  const licenses = getLicenses();
-  const now = new Date();
-  const expired = licenses.filter(l => l.expiry && new Date(l.expiry) < now).length;
-  document.getElementById('total-users').textContent   = users.length;
-  document.getElementById('premium-users').textContent = licenses.filter(l => l.accountType === 'real').length;
-  document.getElementById('trial-users').textContent   = licenses.filter(l => l.accountType === 'demo').length;
-  document.getElementById('expired-users').textContent = expired;
-  document.getElementById('active-users').textContent  = Math.max(0, licenses.length - expired);
-}
-
-// ── Inserir Manual (Bônus/Trial) ──────────────────────────────────
-async function inserirManual() {
-  const name        = document.getElementById('mName').value.trim();
-  const localProdId = document.getElementById('mProduct').value;
-  const account     = document.getElementById('mAcc').value.trim();
-  const accountType = document.getElementById('mAccountType').value;
-  const expiry      = document.getElementById('mExpiry').value;
-
-  if (!name || !localProdId || !account || !expiry) {
-    showMsg('msg2', '❌ Preencha todos os campos obrigatórios', false); return;
-  }
-
-  const serverProdId = toServerId(localProdId);
-  if (!serverProdId) { showMsg('msg2', '❌ Produto não mapeado para o servidor', false); return; }
-
-  const prod = _serverProducts.find(p => p.id === serverProdId);
-  const prodName = prod ? prod.name : serverProdId;
-
-  // 1. Criar/atualizar licença no servidor
-  const r1 = await apiCall('POST', '/admin/manual', { account, name, endDate: expiry });
-  if (!r1 || !r1.ok) { showMsg('msg2', '❌ Erro ao criar licença: ' + (r1?.error||'Servidor indisponível'), false); return; }
-
-  // 2. Atribuir produto COM todos os campos de restrição
-  const r2 = await apiCall('POST', '/admin/user-product', {
-    account, productId: serverProdId, name: prodName,
-    accountType,
-    accountReal: accountType === 'real' ? account : '',
-    accountDemo: accountType === 'demo' ? account : '',
-    minLots: 0, maxLots: 0, instances: 1
-  });
-  if (!r2 || !r2.ok) { showMsg('msg2', '❌ Licença criada mas produto não atribuído: ' + (r2?.error||''), false); return; }
-
-  // 3. Salvar localmente para exibição
-  try {
-    const users = getUsers();
-    const newUser = { id: Date.now(), name, created: new Date().toISOString() };
-    users.push(newUser); saveUsers(users);
-    const lics = getLicenses();
-    lics.push({ id: Date.now(), userId: newUser.id, productId: parseInt(localProdId), account, accountType, expiry, created: new Date().toISOString() });
-    saveLicenses(lics);
-  } catch(e) {}
-
-  showMsg('msg2', `✅ Licença inserida! Expira: ${r1.expiresStr}`, true);
-  document.getElementById('mName').value = '';
-  document.getElementById('mAcc').value  = '';
-  document.getElementById('mExpiry').value = '';
-  await refreshUsersTable();
-}
-
-// ── Modal de Usuário ──────────────────────────────────────────────
-function openAddUserModal() {
-  document.getElementById('userModalTitle').textContent  = '➕ Adicionar Usuário';
-  document.getElementById('userModalButton').textContent = 'Adicionar Usuário';
-  document.getElementById('uId').value    = '';
-  document.getElementById('uName').value  = '';
-  document.getElementById('uEmail').value = '';
-  document.getElementById('uPhone').value = '';
-
-  const products = getProducts();
-  const opts = products.filter(p => p.active).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-  const defDate = (() => { const d = new Date(); d.setDate(d.getDate()+30); return d.toISOString().split('T')[0]; })();
-
-  document.getElementById('productsContainer').innerHTML = `
-    <div class="product-account-row">
-      <div class="fg" style="min-width:120px;flex:2"><label>Produto</label>
-        <select class="user-product" style="width:100%"><option value="">Selecione...</option>${opts}</select>
-      </div>
-      <div class="fg" style="min-width:110px;flex:1"><label>Conta MT5</label>
-        <input type="number" class="user-account" placeholder="12345678">
-      </div>
-      <div class="fg" style="width:82px"><label>Tipo</label>
-        <select class="user-account-type"><option value="demo">Demo</option><option value="real">Real</option></select>
-      </div>
-      <div class="fg" style="width:72px"><label>Lote Mín</label>
-        <input type="number" class="user-minlots" placeholder="0.01" step="0.01" min="0">
-      </div>
-      <div class="fg" style="width:72px"><label>Lote Máx</label>
-        <input type="number" class="user-maxlots" placeholder="1.00" step="0.01" min="0">
-      </div>
-      <div class="fg" style="width:68px"><label>Instâncias</label>
-        <input type="number" class="user-instances" placeholder="1" min="1" value="1">
-      </div>
-      <div class="fg" style="min-width:130px;flex:1"><label>Expiração</label>
-        <input type="date" class="product-expiry" style="width:100%" value="${defDate}">
-      </div>
-      <button class="remove-product" onclick="removeProduct(this)" style="align-self:flex-end">×</button>
-    </div>`;
-
-  document.getElementById('userModal').style.display = 'block';
-}
-
-function openEditUserModal(userId) {
-  const users    = getUsers();
-  const licenses = getLicenses();
-  const user     = users.find(u => u.id === userId);
-  const userLics = licenses.filter(l => l.userId === userId);
-  if (!user) return;
-
-  document.getElementById('userModalTitle').textContent  = '✏️ Editar Usuário';
-  document.getElementById('userModalButton').textContent = 'Salvar Alterações';
-  document.getElementById('uId').value    = user.id;
-  document.getElementById('uName').value  = user.name  || '';
-  document.getElementById('uEmail').value = user.email || '';
-  document.getElementById('uPhone').value = user.phone || '';
-
-  document.getElementById('productsContainer').innerHTML = '';
-  if (userLics.length === 0) addProductField(); else userLics.forEach(l => addProductField(l));
-  document.getElementById('userModal').style.display = 'block';
-}
-
-function closeUserModal() { document.getElementById('userModal').style.display = 'none'; }
-
-function addProductField(data) {
-  data = data || {};
-  const container = document.getElementById('productsContainer');
-  const div = document.createElement('div');
-  div.className = 'product-account-row';
-  const products = getProducts();
-  const opts = products.filter(p => p.active).map(p =>
-    `<option value="${p.id}" ${p.id == data.productId ? 'selected' : ''}>${p.name}</option>`
-  ).join('');
-  const d = new Date(); d.setDate(d.getDate()+30);
-  const defDate = d.toISOString().split('T')[0];
-  div.innerHTML = `
-    <div class="fg" style="min-width:120px;flex:2"><label>Produto</label>
-      <select class="user-product" style="width:100%"><option value="">Selecione...</option>${opts}</select>
-    </div>
-    <div class="fg" style="min-width:110px;flex:1"><label>Conta MT5</label>
-      <input type="number" class="user-account" placeholder="12345678" value="${data.account||''}">
-    </div>
-    <div class="fg" style="width:82px"><label>Tipo</label>
-      <select class="user-account-type">
-        <option value="demo" ${(data.accountType||'demo')==='demo'?'selected':''}>Demo</option>
-        <option value="real" ${data.accountType==='real'?'selected':''}>Real</option>
-      </select>
-    </div>
-    <div class="fg" style="width:72px"><label>Lote Mín</label>
-      <input type="number" class="user-minlots" placeholder="0.01" step="0.01" min="0" value="${data.minLots||''}">
-    </div>
-    <div class="fg" style="width:72px"><label>Lote Máx</label>
-      <input type="number" class="user-maxlots" placeholder="1.00" step="0.01" min="0" value="${data.maxLots||''}">
-    </div>
-    <div class="fg" style="width:68px"><label>Instâncias</label>
-      <input type="number" class="user-instances" placeholder="1" min="1" value="${data.instances||1}">
-    </div>
-    <div class="fg" style="min-width:130px;flex:1"><label>Expiração</label>
-      <input type="date" class="product-expiry" style="width:100%" value="${data.expiry||defDate}">
-    </div>
-    <button class="remove-product" onclick="removeProduct(this)" style="align-self:flex-end">×</button>`;
-  container.appendChild(div);
-}
-
-function removeProduct(button) {
-  if (document.querySelectorAll('.product-account-row').length > 1) button.parentElement.remove();
-  else showMsg('modalMsg', 'É necessário ter pelo menos um produto.', false);
-}
-
-// ── Salvar Usuário (envia para o servidor) ────────────────────────
-async function saveUser() {
-  const userId  = document.getElementById('uId').value;
-  const name    = document.getElementById('uName').value.trim();
-  const email   = document.getElementById('uEmail').value.trim();
-  const phone   = document.getElementById('uPhone').value.trim();
-  const modal   = document.getElementById('userModal');
-
-  // Coletar produtos do modal
-  const userProducts = [];
-  modal.querySelectorAll('.product-account-row').forEach(row => {
-    const localProdId = row.querySelector('.user-product').value;
-    const account     = row.querySelector('.user-account').value.trim();
-    const accountType = row.querySelector('.user-account-type').value;
-    const minLots     = parseFloat(row.querySelector('.user-minlots').value)   || 0;
-    const maxLots     = parseFloat(row.querySelector('.user-maxlots').value)   || 0;
-    const instances   = parseInt(row.querySelector('.user-instances').value)   || 1;
-    const expiry      = row.querySelector('.product-expiry').value;
-    if (localProdId && account) {
-      userProducts.push({ localProdId, account, accountType, minLots, maxLots, instances, expiry });
-    }
-  });
-
-  if (!name || userProducts.length === 0) {
-    showMsg('modalMsg', '❌ Preencha nome e pelo menos um produto', false); return;
-  }
-
-  // Verificar mapeamento de IDs antes de qualquer chamada
-  for (const up of userProducts) {
-    const sid = toServerId(up.localProdId);
-    if (!sid) { showMsg('modalMsg', `❌ Produto ID ${up.localProdId} sem mapeamento no servidor`, false); return; }
-    up.serverProdId = sid;
-  }
-
-  showMsg('modalMsg', '⏳ Salvando no servidor...', true);
-
-  try {
-    // Agrupar por conta MT5 (cada conta precisa de um registro separado no servidor)
-    const byAccount = {};
-    userProducts.forEach(up => {
-      if (!byAccount[up.account]) byAccount[up.account] = [];
-      byAccount[up.account].push(up);
-    });
-
-    for (const [account, prods] of Object.entries(byAccount)) {
-      const mainExpiry = prods[0].expiry;
-
-      if (userId) {
-        // Editar: atualizar dados do usuário
-        await apiCall('PUT', '/admin/user', { account, name, email, phone });
-        // Atualizar período se necessário
-        await apiCall('POST', '/admin/license', { account, name, endDate: mainExpiry });
-      } else {
-        // Novo usuário: registrar com todos os produtos da conta
-        const serverProds = prods.map(up => ({
-          productId:   up.serverProdId,
-          accountType: up.accountType,
-          accountReal: up.accountType === 'real' ? account : '',
-          accountDemo: up.accountType === 'demo' ? account : '',
-          minLots:     up.minLots,
-          maxLots:     up.maxLots,
-          instances:   up.instances
-        }));
-        const r = await apiCall('POST', '/admin/register', {
-          account, name, email, phone,
-          products: serverProds,
-          endDate: mainExpiry
-        });
-        if (!r || !r.ok) {
-          const errDetail = r?.error || (r ? JSON.stringify(r) : 'Servidor não respondeu');
-          showMsg('modalMsg', '❌ Erro ao registrar conta ' + account + ': ' + errDetail, false);
-          console.error('Register error:', r);
-          return;
-        }
-      }
-
-      // Atribuir/atualizar cada produto com restrições completas
-      for (const up of prods) {
-        const prod = _serverProducts.find(p => p.id === up.serverProdId);
-        await apiCall('POST', '/admin/user-product', {
-          account,
-          productId:   up.serverProdId,
-          name:        prod ? prod.name : up.serverProdId,
-          accountType: up.accountType,
-          accountReal: up.accountType === 'real' ? account : '',
-          accountDemo: up.accountType === 'demo' ? account : '',
-          minLots:     up.minLots,
-          maxLots:     up.maxLots,
-          instances:   up.instances
-        });
-      }
-    }
-
-    // Salvar localmente para exibição imediata
-    const users  = getUsers();
-    const lics   = getLicenses();
-    let localUser;
-    if (userId) {
-      localUser = users.find(u => u.id == userId);
-      if (localUser) { localUser.name = name; localUser.email = email; localUser.phone = phone; }
-      saveUsers(users);
-      const otherLics = lics.filter(l => l.userId != userId);
-      const newLics = userProducts.map(up => ({
-        id: Date.now() + Math.random(), userId: parseInt(userId),
-        productId: parseInt(up.localProdId), account: up.account,
-        accountType: up.accountType, minLots: up.minLots,
-        maxLots: up.maxLots, instances: up.instances, expiry: up.expiry,
-        created: new Date().toISOString()
-      }));
-      saveLicenses([...otherLics, ...newLics]);
-    } else {
-      localUser = { id: Date.now(), name, email, phone, created: new Date().toISOString() };
-      users.push(localUser); saveUsers(users);
-      const newLics = userProducts.map(up => ({
-        id: Date.now() + Math.random(), userId: localUser.id,
-        productId: parseInt(up.localProdId), account: up.account,
-        accountType: up.accountType, minLots: up.minLots,
-        maxLots: up.maxLots, instances: up.instances, expiry: up.expiry,
-        created: new Date().toISOString()
-      }));
-      saveLicenses([...lics, ...newLics]);
-    }
-
-    showMsg('modalMsg', userId ? '✅ Usuário atualizado no servidor!' : '✅ Usuário registrado no servidor!', true);
-    setTimeout(async () => { closeUserModal(); await refreshUsersTable(); }, 800);
-
-  } catch(e) {
-    showMsg('modalMsg', '❌ Erro: ' + e.message, false);
-  }
-}
-
-// ── Produtos (local) ──────────────────────────────────────────────
-function addProd() {
-  const name = document.getElementById('pName').value.trim();
-  const type = document.getElementById('pType').value;
-  const desc = document.getElementById('pDesc').value.trim();
-  if (!name || !type) { showMsg('msg3', '❌ Preencha nome e tipo', false); return; }
-  const products = getProducts();
-  products.push({ id: Date.now(), name, type, description: desc, active: true });
-  saveProducts(products);
-  showMsg('msg3', '✅ Produto adicionado!', true);
-  document.getElementById('pName').value = '';
-  document.getElementById('pDesc').value = '';
-  renderProductsTable();
-  loadProductsDropdown('#mProduct');
-}
-
-function editProduct(id) {
-  const products = getProducts();
-  const product  = products.find(p => p.id === id);
-  if (!product) return;
-  let modal = document.getElementById('editProdModal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'editProdModal'; modal.className = 'modal'; modal.style.display = 'none';
-    modal.innerHTML = `
-      <div class="modal-content" style="max-width:480px">
-        <div class="modal-header">
-          <h3 class="modal-title">✏️ Editar Produto</h3>
-          <span class="close" onclick="document.getElementById('editProdModal').style.display='none'">&times;</span>
-        </div>
-        <div class="modal-body">
-          <div id="editProdMsg" class="msg"></div>
-          <div class="form-row" style="margin-bottom:10px">
-            <div class="fg" style="width:100%"><label>ID</label>
-              <input type="text" id="eProdId" style="width:100%;opacity:.6" readonly>
-            </div>
-          </div>
-          <div class="form-row" style="margin-bottom:10px">
-            <div class="fg" style="width:100%"><label>Nome *</label>
-              <input type="text" id="eProdName" style="width:100%">
-            </div>
-          </div>
-          <div class="form-row" style="margin-bottom:10px">
-            <div class="fg" style="width:100%"><label>Tipo</label>
-              <select id="eProdType" style="width:100%">
-                <option value="ea">Expert Advisor</option>
-                <option value="indicator">Indicador</option>
-                <option value="dashboard">Dashboard</option>
-                <option value="other">Outro</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-row" style="margin-bottom:16px">
-            <div class="fg" style="width:100%"><label>Descrição</label>
-              <input type="text" id="eProdDesc" style="width:100%">
-            </div>
-          </div>
-          <div style="display:flex;gap:8px;justify-content:flex-end">
-            <button class="btn" style="background:#21262d;color:#e6edf3" onclick="document.getElementById('editProdModal').style.display='none'">Cancelar</button>
-            <button class="btn btn-green" onclick="saveEditProduct()">✓ Salvar</button>
-          </div>
-        </div>
-      </div>`;
-    document.body.appendChild(modal);
-  }
-  document.getElementById('eProdId').value   = product.id;
-  document.getElementById('eProdName').value = product.name;
-  document.getElementById('eProdType').value = product.type.toLowerCase().replace(' ','_') || 'ea';
-  document.getElementById('eProdDesc').value = product.description || '';
-  modal.style.display = 'block';
-}
-
-function saveEditProduct() {
-  const id   = document.getElementById('eProdId').value;
-  const name = document.getElementById('eProdName').value.trim();
-  const type = document.getElementById('eProdType').value;
-  const desc = document.getElementById('eProdDesc').value.trim();
-  if (!name) { showMsg('editProdMsg', '❌ Nome obrigatório', false); return; }
-  const products = getProducts();
-  const idx = products.findIndex(p => p.id == id);
-  if (idx === -1) return;
-  products[idx].name = name; products[idx].type = type; products[idx].description = desc;
-  saveProducts(products);
-  renderProductsTable();
-  loadProductsDropdown('#mProduct');
-  document.getElementById('editProdModal').style.display = 'none';
-  showMsg('msg3', '✅ Produto atualizado!', true);
-}
-
-function toggleProduct(id) {
-  const products = getProducts();
-  const idx = products.findIndex(p => p.id === id);
-  if (idx !== -1) { products[idx].active = !products[idx].active; saveProducts(products); renderProductsTable(); loadProductsDropdown('#mProduct'); }
-}
-
-function delProd(id) {
-  if (!confirm('Remover produto?')) return;
-  saveProducts(getProducts().filter(p => p.id !== id));
-  renderProductsTable(); loadProductsDropdown('#mProduct');
-}
-
-// ── Limpar banco completo ─────────────────────────────────────────
-async function limparBanco() {
-  if (!confirm('⚠️ ATENÇÃO: Isso vai remover TODOS os usuários e licenças do servidor.\n\nOs produtos do catálogo serão preservados.\n\nConfirma?')) return;
-  if (!confirm('Tem certeza? Esta ação não pode ser desfeita.')) return;
-  const r = await apiCall('DELETE', '/admin/wipe');
-  if (r && r.ok) {
-    // Limpar também o localStorage
-    saveUsers([]); saveLicenses([]);
-    showMsg('msg2', `✅ Banco limpo! ${r.accountsRemoved} conta(s) removida(s).`, true);
-    renderUsersTable(); updateStats();
-  } else {
-    showMsg('msg2', '❌ Erro ao limpar banco: ' + (r?.error || 'Servidor indisponível'), false);
-  }
-}
-async function deleteUser(id) {
-  // Esta função só age sobre dados locais do localStorage
-  // Para usuários vindos do servidor, usar o botão 🗑 (delUser(acct))
-  const lics = getLicenses().filter(l => l.userId === id);
-  if (lics.length === 0) {
-    // Sem dados locais — não fazer nada (usuário vem do servidor)
-    showMsg('msg2', '⚠️ Use o botão 🗑 na linha do usuário para remover.', false);
-    return;
-  }
-  if (!confirm('Remover usuário?')) return;
-  for (const l of lics) {
-    await apiCall('DELETE', '/admin/user', { account: String(l.account) });
-  }
-  saveUsers(getUsers().filter(u => u.id !== id));
-  saveLicenses(getLicenses().filter(l => l.userId !== id));
-  renderUsersTable(); updateStats();
-  showMsg('msg2', '✅ Usuário removido!', true);
-}
-
-// ── Init ──────────────────────────────────────────────────────────
-async function loadServerProducts() {
-  try {
-    const r = await apiCall('GET', '/admin/products');
-    if (r && r.products) {
-      _serverProducts = r.products;
-      console.log('[Admin] Produtos carregados:', _serverProducts.map(p => p.id+':'+p.name).join(', '));
-    }
-  } catch(e) { console.warn('[Admin] Produtos não carregados:', e.message); }
-}
-
-document.addEventListener('DOMContentLoaded', async function() {
-  initializeDatabase();
-
-  // Detectar modo de operação
-  if (window.__SERVER_BOOTSTRAP__) {
-    // Modo servidor: página servida pelo /admin com dados injetados
-    _serverMode = true;
-    // Recuperar auth salvo (digitado pelo usuário anteriormente)
-    const savedAuth = localStorage.getItem('db_auth');
-    const savedServer = localStorage.getItem('db_server');
-    if (savedAuth) {
-      AUTH = savedAuth;
-      _serverAuthHeader = savedAuth;
-      if (savedServer) SERVER = savedServer;
-    } else {
-      // Sem auth salvo — modo somente leitura (botões funcionam pela página do servidor)
-      AUTH = 'server-injected';
-      _serverAuthHeader = '';
-    }
-    const b = window.__SERVER_BOOTSTRAP__;
-    if (b.rows) renderUsersFromServerRows(b.rows);
-    if (b.stats) renderStatsFromServer(b.stats);
-    if (b.productsJson) {
-      _serverProducts = Array.isArray(b.productsJson) ? b.productsJson : [];
-      if (_serverProducts.length > 0) {
-        const mapped = _serverProducts.map((p,i) => ({
-          id: i+1,
-          name: p.name.toUpperCase(),
-          type: p.type||'ea',
-          description: p.description||'',
-          active: p.active!==false,
-          serverId: p.id
-        }));
-        saveProducts(mapped);
-      }
-    }
-    renderProductsTable();
-    loadProductsDropdown('#mProduct');
-  } else {
-    // Modo local: arquivo aberto diretamente no browser
-    _serverMode = false;
-    renderProductsTable();
-    renderUsersTable();
-    updateStats();
-    loadProductsDropdown('#mProduct');
-    checkCredentials();
-    if (AUTH) {
-      _serverAuthHeader = AUTH;
-      _serverMode = true;
-      await loadServerProducts();
-      // Carregar usuários do servidor
-      await refreshUsersTable();
-    }
-  }
-
-  const defaultDate = new Date();
-  defaultDate.setDate(defaultDate.getDate() + 30);
-  document.getElementById('mExpiry').value = defaultDate.toISOString().split('T')[0];
-});
-
-function renderUsersFromServerRows(rows) {
-  const table = document.getElementById('usersTable');
-  if (!rows || rows.trim() === '') {
-    table.innerHTML = '<tr><td colspan="7" class="loading">Nenhum usuário cadastrado</td></tr>';
-    return;
-  }
-  table.innerHTML = rows;
-  // Sincronizar localStorage com dados do servidor
-  // (extrair contas das rows para exibição correta)
-}
-
-function renderStatsFromServer(stats) {
-  if (!stats) return;
-  document.getElementById('total-users').textContent   = stats.total   || 0;
-  document.getElementById('premium-users').textContent = stats.premium || 0;
-  document.getElementById('trial-users').textContent   = stats.trial   || 0;
-  document.getElementById('expired-users').textContent = stats.expired || 0;
-  document.getElementById('active-users').textContent  = stats.active  || 0;
-}
-
-window.onclick = function(event) {
-  if (event.target.className === 'modal') closeUserModal();
-};
-
-// ── Atualizar tabela de usuários sem recarregar a página ──────────
-async function refreshUsersTable() {
-  if (_serverMode && _serverAuthHeader) {
-    // Buscar tabela atualizada direto do servidor
-    try {
-      const r = await fetch(SERVER + '/admin', { headers: { 'Authorization': _serverAuthHeader } });
-      if (r.ok) {
-        const html = await r.text();
-        // Extrair tbodies — pegar o segundo (usuários, não produtos)
-        const tbodies = [...html.matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)];
-        if (tbodies.length >= 2) {
-          document.getElementById('usersTable').innerHTML = tbodies[1][1];
-        } else if (tbodies.length === 1) {
-          document.getElementById('usersTable').innerHTML = tbodies[0][1];
-        }
-        // Atualizar stats
-        ['total','premium','trial','expired','active'].forEach(k => {
-          const m = html.match(new RegExp('id="'+k+'-users">(\\d+)'));
-          if (m) { const el=document.getElementById(k+'-users'); if(el) el.textContent=m[1]; }
-        });
-        return;
-      }
-    } catch(e) { console.warn('refreshUsersTable fetch error:', e); }
-  }
-  // Fallback local
-  renderUsersTable(); updateStats();
-}
-
-
-
-// ══════════════════════════════════════════════════════════════════
-//  FUNÇÕES DOS BOTÕES DA TABELA DE USUÁRIOS
-//  (chamadas pelas rows geradas pelo servidor via __SERVER_BOOTSTRAP__)
-// ══════════════════════════════════════════════════════════════════
-
-// ── ✏️ Editar usuário ─────────────────────────────────────────────
-function editUser(acct, name, email, phone) {
-  let modal = document.getElementById('editUserModal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'editUserModal'; modal.className = 'modal';
-    modal.innerHTML = `
-      <div class="modal-content" style="max-width:500px">
-        <div class="modal-header">
-          <h3 class="modal-title">✏️ Editar Usuário</h3>
-          <span class="close" onclick="document.getElementById('editUserModal').style.display='none'">&times;</span>
-        </div>
-        <div class="modal-body">
-          <div id="msgEdit" class="msg"></div>
-          <input type="hidden" id="eAcct">
-          <div class="form-row" style="margin-bottom:8px">
-            <div class="fg" style="width:100%"><label>Nome</label>
-              <input type="text" id="eName" style="width:100%">
-            </div>
-          </div>
-          <div class="form-row" style="margin-bottom:8px">
-            <div class="fg" style="width:100%"><label>E-mail</label>
-              <input type="email" id="eEmail" style="width:100%">
-            </div>
-          </div>
-          <div class="form-row" style="margin-bottom:14px">
-            <div class="fg" style="width:100%"><label>Telefone</label>
-              <input type="tel" id="ePhone" style="width:100%">
-            </div>
-          </div>
-          <div style="display:flex;gap:8px;justify-content:flex-end">
-            <button class="btn-sm" onclick="document.getElementById('editUserModal').style.display='none'">Cancelar</button>
-            <button class="btn btn-green" onclick="saveEdit()">✓ Salvar</button>
-          </div>
-        </div>
-      </div>`;
-    document.body.appendChild(modal);
-  }
-  document.getElementById('eAcct').value  = acct;
-  document.getElementById('eName').value  = name  || '';
-  document.getElementById('eEmail').value = email || '';
-  document.getElementById('ePhone').value = phone || '';
-  modal.style.display = 'block';
-}
-
-async function saveEdit() {
-  const acct  = document.getElementById('eAcct').value;
-  const name  = document.getElementById('eName').value.trim();
-  const email = document.getElementById('eEmail').value.trim();
-  const phone = document.getElementById('ePhone').value.trim();
-  const r = await apiCall('PUT', '/admin/user', { account: acct, name, email, phone });
-  if (r && r.ok) {
-    showMsg('msgEdit', '✅ Salvo!', true);
-    setTimeout(() => { document.getElementById('editUserModal').style.display='none'; refreshUsersTable(); }, 1000);
-  } else {
-    showMsg('msgEdit', '❌ Erro: ' + (r?.error||''), false);
-  }
-}
-
-// ── 📅 Licença (bonus/extensão) ───────────────────────────────────
-let _bonusAcct = '';
-function bonusModal(acct, name) {
-  _bonusAcct = acct;
-  let modal = document.getElementById('bonusUserModal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'bonusUserModal'; modal.className = 'modal';
-    modal.innerHTML = `
-      <div class="modal-content" style="max-width:480px">
-        <div class="modal-header">
-          <h3 class="modal-title">📅 Gerenciar Licença</h3>
-          <span class="close" onclick="document.getElementById('bonusUserModal').style.display='none'">&times;</span>
-        </div>
-        <div class="modal-body">
-          <div id="msgBonus" class="msg"></div>
-          <div class="form-row" style="margin-bottom:8px">
-            <div class="fg" style="flex:1"><label>Nome</label><input type="text" id="bName" style="width:100%"></div>
-          </div>
-          <div class="form-row" style="margin-bottom:8px">
-            <div class="fg"><label>Atalhos</label>
-              <div style="display:flex;gap:4px">
-                <button class="btn-sm" onclick="bonusAddDays(7)">+7d</button>
-                <button class="btn-sm" onclick="bonusAddDays(15)">+15d</button>
-                <button class="btn-sm" onclick="bonusAddDays(30)">+30d</button>
-                <button class="btn-sm" onclick="bonusAddDays(90)">+3m</button>
-                <button class="btn-sm" onclick="bonusAddDays(180)">+6m</button>
-                <button class="btn-sm" onclick="bonusAddDays(365)">+1a</button>
-              </div>
-            </div>
-          </div>
-          <div class="form-row" style="margin-bottom:14px">
-            <div class="fg"><label>Data Final</label><input type="date" id="bDate" style="width:160px"></div>
-          </div>
-          <div style="display:flex;gap:8px;justify-content:flex-end">
-            <button class="btn-sm" onclick="document.getElementById('bonusUserModal').style.display='none'">Cancelar</button>
-            <button class="btn btn-green" style="background:#7c3aed" onclick="saveLicLifetime()">♾ Vitalícia</button>
-            <button class="btn btn-green" onclick="saveBonus()">✓ Salvar</button>
-          </div>
-        </div>
-      </div>`;
-    document.body.appendChild(modal);
-  }
-  document.getElementById('bName').value = name || '';
-  const def = new Date(); def.setDate(def.getDate()+30);
-  document.getElementById('bDate').value = def.toISOString().split('T')[0];
-  modal.style.display = 'block';
-}
-
-function bonusAddDays(n) {
-  const el = document.getElementById('bDate');
-  const base = el.value ? new Date(el.value+'T00:00:00') : new Date();
-  base.setDate(base.getDate()+n);
+function licAddDays(n) {
+  const el = document.getElementById('lic-date');
+  const base = el.value ? new Date(el.value + 'T12:00:00') : new Date();
+  base.setDate(base.getDate() + n);
   el.value = base.toISOString().split('T')[0];
 }
 
-async function saveBonus() {
-  const endDate = document.getElementById('bDate').value;
-  const name    = document.getElementById('bName').value.trim();
-  if (!endDate) { showMsg('msgBonus','❌ Selecione uma data',false); return; }
-  const r = await apiCall('POST','/admin/license',{account:_bonusAcct,name,endDate});
-  if (r && r.ok) {
-    showMsg('msgBonus','✅ Até '+r.expiresStr,true);
-    setTimeout(()=>{document.getElementById('bonusUserModal').style.display='none';refreshUsersTable();},1200);
-  } else showMsg('msgBonus','❌ '+(r?.error||'Erro'),false);
+function filterTable() {
+  const q = document.getElementById('search-user').value.toLowerCase();
+  document.querySelectorAll('#users-tbody tr').forEach(tr => {
+    tr.style.display = !q || tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
 }
 
-async function saveLicLifetime() {
-  const name = document.getElementById('bName').value.trim();
-  const r = await apiCall('POST','/admin/license',{account:_bonusAcct,name,lifetime:true});
-  if (r && r.ok) {
-    showMsg('msgBonus','✅ Licença Vitalícia aplicada!',true);
-    setTimeout(()=>{document.getElementById('bonusUserModal').style.display='none';refreshUsersTable();},1200);
-  } else showMsg('msgBonus','❌ '+(r?.error||'Erro'),false);
+function toServerId(name) {
+  const up = name.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  for (const [k,v] of Object.entries(PROD_MAP)) {
+    if (k.replace(/[^A-Z0-9]/g,'') === up) return v;
+  }
+  const sp = PRODUCTS_CACHE.find(p => p.name.toUpperCase().replace(/[^A-Z0-9]/g,'') === up);
+  return sp ? sp.id : null;
 }
 
-// ── 🚫 Revogar licença ────────────────────────────────────────────
+// ── Carregar dados ────────────────────────────────────────────────
+async function loadAll() {
+  if (!AUTH) { showCfg(); return; }
+  await loadProducts();
+  await loadUsers();
+}
+
+async function loadProducts() {
+  const r = await api('GET', '/admin/products');
+  if (!r || !r.products) return;
+  PRODUCTS_CACHE = r.products;
+
+  // Tabela de produtos
+  const tbody = document.getElementById('prod-tbody');
+  tbody.innerHTML = PRODUCTS_CACHE.map(p => `
+    <tr>
+      <td><code style="font-size:10px">${p.id}</code></td>
+      <td><strong>${p.name}</strong></td>
+      <td>${p.type||'—'}</td>
+      <td>${p.minLots||0}</td>
+      <td>${p.maxLots||0}</td>
+      <td>${p.instances||1}</td>
+      <td style="color:#8b949e">${p.description||'—'}</td>
+    </tr>`).join('') || '<tr><td colspan="7" class="loading">Nenhum produto</td></tr>';
+
+  // Popular dropdowns
+  const opts = '<option value="">Selecione...</option>' +
+    PRODUCTS_CACHE.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  document.getElementById('m-prod').innerHTML = opts;
+  document.getElementById('prod-sel').innerHTML = opts;
+}
+
+async function loadUsers() {
+  // Buscar a página do admin para extrair a tabela de usuários renderizada pelo servidor
+  try {
+    const res = await fetch(SERVER + '/admin', { headers: { 'Authorization': AUTH } });
+    if (!res.ok) return;
+    const html = await res.text();
+
+    // Extrair stats
+    ['total','premium','trial','expired','active'].forEach(k => {
+      const m = html.match(new RegExp('id="st-' + k + '">(\\d+)'));
+      if (m) { const el = document.getElementById('st-' + k); if (el) el.textContent = m[1]; }
+    });
+
+    // Extrair tabela de usuários (primeiro tbody)
+    const tbodyMatch = html.match(/<tbody id="users-tbody">([\s\S]*?)<\/tbody>/);
+    if (tbodyMatch) {
+      document.getElementById('users-tbody').innerHTML = tbodyMatch[1];
+    }
+  } catch(e) {
+    console.warn('loadUsers error:', e);
+  }
+}
+
+async function reloadPage() {
+  await loadAll();
+  showMsg('msg-users', '✅ Atualizado!', true);
+}
+
+// ── Config ────────────────────────────────────────────────────────
+function showCfg() {
+  document.getElementById('cfg-url').value  = SERVER;
+  document.getElementById('cfg-user').value = '';
+  document.getElementById('cfg-pass').value = '';
+  document.getElementById('cfg-overlay').style.display = 'flex';
+}
+
+async function doSaveCfg() {
+  const url  = document.getElementById('cfg-url').value.trim().replace(/\/$/, '');
+  const user = document.getElementById('cfg-user').value.trim();
+  const pass = document.getElementById('cfg-pass').value;
+  if (!url || !user || !pass) { document.getElementById('cfg-msg').textContent = '❌ Preencha todos os campos'; return; }
+  SERVER = url;
+  AUTH   = 'Basic ' + btoa(user + ':' + pass);
+  // Testar conexão
+  const r = await api('GET', '/admin/products');
+  if (!r) return; // api() já mostra overlay se 401
+  localStorage.setItem('db_server', SERVER);
+  localStorage.setItem('db_auth',   AUTH);
+  document.getElementById('cfg-overlay').style.display = 'none';
+  await loadAll();
+}
+
+function clearConfig() {
+  localStorage.removeItem('db_auth');
+  localStorage.removeItem('db_server');
+  AUTH = ''; SERVER = 'https://dashbot.investidorbot.com';
+  showCfg();
+}
+
+// ── Inserir Manual ────────────────────────────────────────────────
+async function doInserir() {
+  const name  = document.getElementById('m-name').value.trim();
+  const pid   = document.getElementById('m-prod').value;
+  const acct  = document.getElementById('m-acct').value.trim();
+  const type  = document.getElementById('m-type').value;
+  const expiry = document.getElementById('m-expiry').value;
+  if (!name || !pid || !acct || !expiry) { showMsg('msg-manual','❌ Preencha todos os campos',false); return; }
+
+  const prod = PRODUCTS_CACHE.find(p => p.id === pid);
+  const r1 = await api('POST', '/admin/manual', { account:acct, name, endDate:expiry });
+  if (!r1 || !r1.ok) { showMsg('msg-manual','❌ Erro: '+(r1?.error||'falha'),false); return; }
+
+  const r2 = await api('POST', '/admin/user-product', {
+    account:acct, productId:pid, name:prod?prod.name:pid,
+    accountType:type, accountReal:type==='real'?acct:'', accountDemo:type==='demo'?acct:'',
+    minLots:0, maxLots:0, instances:1
+  });
+  if (!r2 || !r2.ok) { showMsg('msg-manual','⚠️ Licença criada mas produto não atribuído',false); }
+  else {
+    showMsg('msg-manual', '✅ Inserido! Expira: ' + (r1.expiresStr||expiry), true);
+    document.getElementById('m-name').value = '';
+    document.getElementById('m-acct').value = '';
+    await loadUsers();
+  }
+}
+
+// ── Limpar banco ──────────────────────────────────────────────────
+async function doWipe() {
+  if (!confirm('⚠️ Remover TODOS os usuários do banco?\nProdutos serão preservados.')) return;
+  if (!confirm('Tem certeza? Ação irreversível.')) return;
+  const r = await api('DELETE', '/admin/wipe');
+  if (r && r.ok) { showMsg('msg-manual','✅ Banco limpo! '+r.accountsRemoved+' conta(s) removida(s).',true); await loadUsers(); }
+  else showMsg('msg-manual','❌ Erro ao limpar',false);
+}
+
+// ── Adicionar/Editar Usuário ──────────────────────────────────────
+function addProdRow(data) {
+  data = data || {};
+  const d = new Date(); d.setDate(d.getDate()+30);
+  const defDate = d.toISOString().split('T')[0];
+  const opts = PRODUCTS_CACHE.map(p =>
+    `<option value="${p.id}" ${p.id===data.productId?'selected':''}>${p.name}</option>`
+  ).join('');
+  const div = document.createElement('div');
+  div.className = 'prod-row';
+  div.innerHTML = `
+    <div class="fg" style="min-width:120px;flex:2"><label>Produto *</label>
+      <select class="pr-prod" style="width:100%"><option value="">Selecione...</option>${opts}</select></div>
+    <div class="fg" style="min-width:110px;flex:1"><label>Conta MT5 *</label>
+      <input type="number" class="pr-acct" value="${data.account||''}" placeholder="12345678"></div>
+    <div class="fg" style="width:80px"><label>Tipo</label>
+      <select class="pr-type"><option value="demo" ${(data.accountType||'demo')==='demo'?'selected':''}>Demo</option><option value="real" ${data.accountType==='real'?'selected':''}>Real</option></select></div>
+    <div class="fg" style="width:72px"><label>Lote Mín</label>
+      <input type="number" class="pr-min" value="${data.minLots||''}" placeholder="0" step="0.01" min="0"></div>
+    <div class="fg" style="width:72px"><label>Lote Máx</label>
+      <input type="number" class="pr-max" value="${data.maxLots||''}" placeholder="0" step="0.01" min="0"></div>
+    <div class="fg" style="width:68px"><label>Instâncias</label>
+      <input type="number" class="pr-inst" value="${data.instances||1}" min="1"></div>
+    <div class="fg" style="min-width:130px;flex:1"><label>Expiração</label>
+      <input type="date" class="pr-exp" value="${data.expiry||defDate}" style="width:100%"></div>
+    <button onclick="this.closest('.prod-row').remove()" style="background:#f85149;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;align-self:flex-end">×</button>`;
+  document.getElementById('u-prods-container').appendChild(div);
+}
+
+function openAddUser() {
+  document.getElementById('modal-user-title').textContent = '➕ Adicionar Usuário';
+  document.getElementById('u-save-btn').textContent = 'Adicionar Usuário';
+  document.getElementById('u-editing-acct').value = '';
+  document.getElementById('u-name').value  = '';
+  document.getElementById('u-email').value = '';
+  document.getElementById('u-phone').value = '';
+  document.getElementById('u-prods-container').innerHTML = '';
+  addProdRow();
+  openModal('modal-user');
+}
+
+async function doSaveUser() {
+  const editingAcct = document.getElementById('u-editing-acct').value;
+  const name  = document.getElementById('u-name').value.trim();
+  const email = document.getElementById('u-email').value.trim();
+  const phone = document.getElementById('u-phone').value.trim();
+  if (!name) { showMsg('msg-modal-user','❌ Nome obrigatório',false); return; }
+
+  const rows = document.querySelectorAll('#u-prods-container .prod-row');
+  const prods = [];
+  for (const row of rows) {
+    const pid   = row.querySelector('.pr-prod').value;
+    const acct  = row.querySelector('.pr-acct').value.trim();
+    const type  = row.querySelector('.pr-type').value;
+    const minL  = parseFloat(row.querySelector('.pr-min').value)||0;
+    const maxL  = parseFloat(row.querySelector('.pr-max').value)||0;
+    const inst  = parseInt(row.querySelector('.pr-inst').value)||1;
+    const exp   = row.querySelector('.pr-exp').value;
+    if (!pid || !acct) { showMsg('msg-modal-user','❌ Selecione produto e conta em todas as linhas',false); return; }
+    prods.push({ productId:pid, account:acct, accountType:type, accountReal:type==='real'?acct:'', accountDemo:type==='demo'?acct:'', minLots:minL, maxLots:maxL, instances:inst, expiry:exp });
+  }
+  if (prods.length === 0) { showMsg('msg-modal-user','❌ Adicione pelo menos um produto',false); return; }
+
+  showMsg('msg-modal-user','⏳ Salvando...', true);
+
+  // Agrupar por conta
+  const byAcct = {};
+  prods.forEach(p => { if (!byAcct[p.account]) byAcct[p.account]=[]; byAcct[p.account].push(p); });
+
+  for (const [acct, ps] of Object.entries(byAcct)) {
+    const serverProds = ps.map(p => ({
+      productId:p.productId, accountType:p.accountType,
+      accountReal:p.accountReal, accountDemo:p.accountDemo,
+      minLots:p.minLots, maxLots:p.maxLots, instances:p.instances
+    }));
+
+    if (editingAcct) {
+      await api('PUT', '/admin/user', { account:acct, name, email, phone });
+      await api('POST', '/admin/license', { account:acct, name, endDate:ps[0].expiry });
+    } else {
+      const r = await api('POST', '/admin/register', {
+        account:acct, name, email, phone, products:serverProds, endDate:ps[0].expiry
+      });
+      if (!r || !r.ok) {
+        showMsg('msg-modal-user', '❌ Erro na conta '+acct+': '+(r?.error||'falha'), false);
+        return;
+      }
+    }
+
+    for (const p of ps) {
+      const prod = PRODUCTS_CACHE.find(x => x.id === p.productId);
+      await api('POST', '/admin/user-product', {
+        account:acct, productId:p.productId, name:prod?prod.name:p.productId,
+        accountType:p.accountType, accountReal:p.accountReal, accountDemo:p.accountDemo,
+        minLots:p.minLots, maxLots:p.maxLots, instances:p.instances
+      });
+    }
+  }
+
+  showMsg('msg-modal-user', editingAcct ? '✅ Atualizado!' : '✅ Usuário registrado!', true);
+  setTimeout(async () => {
+    closeModal('modal-user');
+    await loadUsers();
+  }, 700);
+}
+
+// ── Ações da tabela ───────────────────────────────────────────────
+function editUser(acct, name, email, phone) {
+  document.getElementById('edit-acct').value  = acct;
+  document.getElementById('edit-name').value  = decodeURIComponent(name||'');
+  document.getElementById('edit-email').value = email||'';
+  document.getElementById('edit-phone').value = phone||'';
+  openModal('modal-edit');
+}
+
+async function doSaveEdit() {
+  const acct  = document.getElementById('edit-acct').value;
+  const name  = document.getElementById('edit-name').value.trim();
+  const email = document.getElementById('edit-email').value.trim();
+  const phone = document.getElementById('edit-phone').value.trim();
+  const r = await api('PUT', '/admin/user', { account:acct, name, email, phone });
+  if (r && r.ok) {
+    showMsg('msg-modal-edit','✅ Salvo!',true);
+    setTimeout(async () => { closeModal('modal-edit'); await loadUsers(); }, 700);
+  } else showMsg('msg-modal-edit','❌ '+(r?.error||'Erro'),false);
+}
+
+function bonusModal(acct, name) {
+  document.getElementById('lic-acct').value = acct;
+  document.getElementById('lic-name').value = decodeURIComponent(name||'');
+  const d = new Date(); d.setDate(d.getDate()+30);
+  document.getElementById('lic-date').value = d.toISOString().split('T')[0];
+  openModal('modal-lic');
+}
+
+async function doSaveLic() {
+  const acct   = document.getElementById('lic-acct').value;
+  const name   = document.getElementById('lic-name').value;
+  const endDate = document.getElementById('lic-date').value;
+  if (!endDate) { showMsg('msg-modal-lic','❌ Selecione a data',false); return; }
+  const r = await api('POST','/admin/license',{account:acct,name,endDate});
+  if (r && r.ok) {
+    showMsg('msg-modal-lic','✅ Até '+r.expiresStr,true);
+    setTimeout(async () => { closeModal('modal-lic'); await loadUsers(); }, 700);
+  } else showMsg('msg-modal-lic','❌ '+(r?.error||'Erro'),false);
+}
+
+async function doLicLifetime() {
+  const acct = document.getElementById('lic-acct').value;
+  const name = document.getElementById('lic-name').value;
+  const r = await api('POST','/admin/license',{account:acct,name,lifetime:true});
+  if (r && r.ok) {
+    showMsg('msg-modal-lic','✅ Licença Vitalícia!',true);
+    setTimeout(async () => { closeModal('modal-lic'); await loadUsers(); }, 700);
+  } else showMsg('msg-modal-lic','❌ '+(r?.error||'Erro'),false);
+}
+
 async function revogar(acct) {
   if (!confirm('Revogar licença de '+acct+'?')) return;
-  const r = await apiCall('DELETE','/admin/license',{account:acct});
-  if (r && r.ok) {
-    showMsg('msg2','✅ Licença revogada!',true);
-    setTimeout(()=>refreshUsersTable(),1000);
-  } else showMsg('msg2','❌ Erro ao revogar',false);
+  const r = await api('DELETE','/admin/license',{account:acct});
+  if (r && r.ok) { showMsg('msg-users','✅ Licença revogada!',true); await loadUsers(); }
+  else showMsg('msg-users','❌ Erro ao revogar',false);
 }
 
-// ── ↺ Resetar senha ───────────────────────────────────────────────
 async function resetPw(acct) {
   if (!confirm('Resetar senha de '+acct+'?')) return;
-  const r = await apiCall('POST','/admin/reset-password',{account:acct});
+  const r = await api('POST','/admin/reset-password',{account:acct});
   if (r && r.ok) alert('✅ Senha resetada!');
   else alert('❌ Erro ao resetar');
 }
 
-// ── 🗑 Excluir usuário (por conta MT5) ───────────────────────────
 async function delUser(acct) {
-  if (!confirm('⚠️ Remover COMPLETAMENTE o usuário '+acct+'?\nEsta ação não pode ser desfeita.')) return;
-  const r = await apiCall('DELETE','/admin/user',{account:String(acct)});
+  if (!confirm('⚠️ Remover COMPLETAMENTE o usuário '+acct+'?')) return;
+  const r = await api('DELETE','/admin/user',{account:String(acct)});
   if (r && r.ok) {
-    showMsg('msg2','✅ Usuário '+acct+' removido!',true);
-    // Limpar localStorage local também
-    const lics = getLicenses().filter(l => String(l.account) !== String(acct));
-    saveLicenses(lics);
-    // Remover linha da tabela diretamente sem recarregar
-    const rows = document.querySelectorAll('#usersTable tr');
-    rows.forEach(row => {
-      if (row.textContent.includes(String(acct))) {
-        row.style.transition = 'opacity 0.3s';
-        row.style.opacity = '0';
-        setTimeout(() => row.remove(), 300);
+    showMsg('msg-users','✅ Removido!',true);
+    // Remover linha da tabela imediatamente
+    document.querySelectorAll('#users-tbody tr').forEach(tr => {
+      if (tr.innerHTML.includes(String(acct))) {
+        tr.style.opacity='0'; tr.style.transition='opacity .3s';
+        setTimeout(()=>tr.remove(),300);
       }
     });
-    // Atualizar contadores
-    setTimeout(() => refreshUsersTable(), 800);
-  } else {
-    showMsg('msg2','❌ Erro ao remover: '+(r?.error||'Servidor indisponível'),false);
-  }
+    setTimeout(async ()=> await loadUsers(), 1000);
+  } else showMsg('msg-users','❌ Erro: '+(r?.error||'falha'),false);
 }
 
-// ── 📦 Atribuir produto ───────────────────────────────────────────
-let _prodAcctServer = '';
 function addUserProd(acct) {
-  _prodAcctServer = acct;
-  let modal = document.getElementById('addProdModal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'addProdModal'; modal.className = 'modal';
-    modal.innerHTML = `
-      <div class="modal-content" style="max-width:600px">
-        <div class="modal-header">
-          <h3 class="modal-title">📦 Atribuir Produto</h3>
-          <span class="close" onclick="document.getElementById('addProdModal').style.display='none'">&times;</span>
-        </div>
-        <div class="modal-body">
-          <div id="msgProd" class="msg"></div>
-          <div class="form-row" style="margin-bottom:8px">
-            <div class="fg" style="flex:2"><label>Conta MT5</label>
-              <input type="text" id="pAcctDisp" style="width:100%;opacity:.7" readonly>
-            </div>
-            <div class="fg" style="flex:3"><label>Produto *</label>
-              <select id="pProdSel" style="width:100%">
-                <option value="">Selecione...</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-row" style="margin-bottom:8px">
-            <div class="fg" style="width:90px"><label>Tipo</label>
-              <select id="pAcctType">
-                <option value="demo">Demo</option>
-                <option value="real">Real</option>
-              </select>
-            </div>
-            <div class="fg" style="width:80px"><label>Lote Mín</label>
-              <input type="number" id="pMinL" value="0" step="0.01" min="0">
-            </div>
-            <div class="fg" style="width:80px"><label>Lote Máx</label>
-              <input type="number" id="pMaxL" value="0" step="0.01" min="0">
-            </div>
-            <div class="fg" style="width:75px"><label>Instâncias</label>
-              <input type="number" id="pInst" value="1" min="1">
-            </div>
-          </div>
-          <div class="form-row" style="margin-bottom:14px">
-            <div class="fg" style="flex:1"><label>Conta Real MT5</label>
-              <input type="text" id="pReal" placeholder="opcional">
-            </div>
-            <div class="fg" style="flex:1"><label>Conta Demo MT5</label>
-              <input type="text" id="pDemo" placeholder="opcional">
-            </div>
-          </div>
-          <div style="display:flex;gap:8px;justify-content:flex-end">
-            <button class="btn-sm" onclick="document.getElementById('addProdModal').style.display='none'">Cancelar</button>
-            <button class="btn btn-green" onclick="saveProd()">✓ Atribuir</button>
-          </div>
-        </div>
-      </div>`;
-    document.body.appendChild(modal);
-  }
-  // Preencher conta e popular dropdown de produtos do servidor
-  document.getElementById('pAcctDisp').value = acct;
-  document.getElementById('pReal').value = '';
-  document.getElementById('pDemo').value = '';
-  const sel = document.getElementById('pProdSel');
-  sel.innerHTML = '<option value="">Selecione...</option>';
-  // Usar produtos do servidor se disponíveis, senão usar locais
-  const prods = _serverProducts.length > 0 ? _serverProducts : getProducts().map(p=>({id:toServerId(p.id)||p.id, name:p.name}));
-  prods.forEach(p => {
-    const o = document.createElement('option');
-    o.value = p.id; o.textContent = p.name;
-    sel.appendChild(o);
-  });
-  modal.style.display = 'block';
+  document.getElementById('prod-acct').value = acct;
+  document.getElementById('prod-sel').value  = '';
+  document.getElementById('prod-min').value  = '0';
+  document.getElementById('prod-max').value  = '0';
+  document.getElementById('prod-inst').value = '1';
+  document.getElementById('prod-real').value = '';
+  document.getElementById('prod-demo').value = '';
+  openModal('modal-prod');
 }
 
-async function saveProd() {
-  const pid  = document.getElementById('pProdSel').value;
-  const acct = _prodAcctServer;
-  const type = document.getElementById('pAcctType').value;
-  if (!pid) { showMsg('msgProd','❌ Selecione um produto',false); return; }
-  const prod = _serverProducts.find(p=>p.id===pid);
-  const r = await apiCall('POST','/admin/user-product',{
-    account:acct, productId:pid,
-    name: prod?prod.name:pid,
-    accountType: type,
-    minLots:   parseFloat(document.getElementById('pMinL').value)||0,
-    maxLots:   parseFloat(document.getElementById('pMaxL').value)||0,
-    instances: parseInt(document.getElementById('pInst').value)||1,
-    accountReal: document.getElementById('pReal').value||'',
-    accountDemo: document.getElementById('pDemo').value||''
+async function doSaveProd() {
+  const acct = document.getElementById('prod-acct').value;
+  const pid  = document.getElementById('prod-sel').value;
+  if (!pid) { showMsg('msg-modal-prod','❌ Selecione um produto',false); return; }
+  const prod = PRODUCTS_CACHE.find(p=>p.id===pid);
+  const r = await api('POST','/admin/user-product',{
+    account:acct, productId:pid, name:prod?prod.name:pid,
+    accountType:document.getElementById('prod-type').value,
+    minLots:parseFloat(document.getElementById('prod-min').value)||0,
+    maxLots:parseFloat(document.getElementById('prod-max').value)||0,
+    instances:parseInt(document.getElementById('prod-inst').value)||1,
+    accountReal:document.getElementById('prod-real').value||'',
+    accountDemo:document.getElementById('prod-demo').value||''
   });
   if (r && r.ok) {
-    showMsg('msgProd','✅ Produto atribuído!',true);
-    setTimeout(()=>{document.getElementById('addProdModal').style.display='none';refreshUsersTable();},1000);
-  } else showMsg('msgProd','❌ '+(r?.error||'Erro'),false);
+    showMsg('msg-modal-prod','✅ Produto atribuído!',true);
+    setTimeout(async ()=>{ closeModal('modal-prod'); await loadUsers(); },700);
+  } else showMsg('msg-modal-prod','❌ '+(r?.error||'Erro'),false);
 }
+
+// ── Fechar modal clicando fora ────────────────────────────────────
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('modal')) closeModal(e.target.id);
+});
+
+// ── Init ──────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  const d = new Date(); d.setDate(d.getDate()+30);
+  document.getElementById('m-expiry').value = d.toISOString().split('T')[0];
+
+  if (!AUTH) { showCfg(); return; }
+  await loadAll();
+});
 </script>
 </body>
 </html>
