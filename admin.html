@@ -38,7 +38,7 @@ input:focus,select:focus{outline:none;border-color:#388bfd}
 
 /* Modal */
 .modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background-color:rgba(13,17,23,0.8)}
-.modal-content{background-color:#161b22;margin:5% auto;padding:20px;border:1px solid #30363d;border-radius:10px;width:90%;max-width:650px}
+.modal-content{background-color:#161b22;margin:3% auto;padding:20px;border:1px solid #30363d;border-radius:10px;width:96%;max-width:960px}
 .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
 .modal-title{color:#58a6ff;font-weight:700}
 .close{color:#8b949e;font-size:24px;font-weight:700;cursor:pointer}
@@ -47,7 +47,7 @@ input:focus,select:focus{outline:none;border-color:#388bfd}
 .account-row{display:flex;gap:8px;align-items:flex-end}
 .remove-account{background:#f85149;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer}
 .loading{color:#8b949e;text-align:center;padding:10px}
-.product-account-row{display:flex;gap:8px;align-items:flex-end;margin-bottom:8px}
+.product-account-row{display:flex;gap:6px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap;background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:8px}
 .remove-product{background:#f85149;color:white;border:none;padding:3px 7px;border-radius:4px;cursor:pointer;font-size:12px}
 </style>
 </head>
@@ -97,6 +97,7 @@ input:focus,select:focus{outline:none;border-color:#388bfd}
       <input type="date" id="mExpiry" style="width:140px">
     </div>
     <button class="btn" style="background:#10b981" onclick="inserirManual()">➕ Inserir</button>
+    <button class="btn btn-red" onclick="limparBanco()" style="margin-left:auto" title="Remove TODOS os usuários do banco para testes">🗑 Limpar Banco</button>
   </div>
 </div>
 
@@ -230,102 +231,353 @@ input:focus,select:focus{outline:none;border-color:#388bfd}
   </div>
 </div>
 
+<!-- ══ OVERLAY DE CONFIGURAÇÃO (aparece se não tiver credenciais) ══ -->
+<div id="configOverlay" style="display:none;position:fixed;inset:0;background:rgba(13,17,23,0.97);z-index:9999;align-items:center;justify-content:center;flex-direction:column">
+  <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:28px;width:90%;max-width:400px">
+    <h2 style="color:#58a6ff;margin-bottom:4px;font-size:18px">⚙️ Configurar Acesso Admin</h2>
+    <p style="color:#8b949e;font-size:12px;margin-bottom:20px">Insira as credenciais do seu servidor Dashbot</p>
+    <div id="cfgMsg" style="color:#f85149;font-size:12px;min-height:18px;margin-bottom:10px"></div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <label style="font-size:10px;color:#8b949e;font-weight:600;text-transform:uppercase">URL do Servidor</label>
+        <input id="cfgUrl" style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:7px 10px;border-radius:5px;font-size:13px" value="https://dashbot.investidorbot.com">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <label style="font-size:10px;color:#8b949e;font-weight:600;text-transform:uppercase">Usuário Admin</label>
+        <input id="cfgUser" style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:7px 10px;border-radius:5px;font-size:13px" placeholder="admin">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <label style="font-size:10px;color:#8b949e;font-weight:600;text-transform:uppercase">Senha Admin</label>
+        <input id="cfgPass" type="password" style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:7px 10px;border-radius:5px;font-size:13px" placeholder="••••••••"
+          onkeydown="if(event.key==='Enter')saveConfig()">
+      </div>
+      <button onclick="saveConfig()" style="background:#1f6feb;color:#fff;border:none;padding:10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;margin-top:6px">
+        🔗 Conectar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Botão discreto para reconfigurar (canto superior direito) -->
+<div style="position:fixed;top:12px;right:16px;z-index:1000">
+  <button onclick="clearConfig()" style="background:#21262d;color:#8b949e;border:1px solid #30363d;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:10px">⚙️ Config</button>
+</div>
+
 <script>
+// ══════════════════════════════════════════════════════════════════
+//  DASHBOT ADMIN — Comunicação direta com o servidor
+// ══════════════════════════════════════════════════════════════════
+
+// ── Configuração do servidor (editável pelo usuário) ──────────────
+let SERVER = localStorage.getItem('db_server') || 'https://dashbot.investidorbot.com';
+let AUTH   = localStorage.getItem('db_auth')   || '';
+
+// Mostrar tela de config se não tiver credenciais salvas
+function checkCredentials() {
+  if (!AUTH) {
+    document.getElementById('configOverlay').style.display = 'flex';
+  }
+}
+
+function saveConfig() {
+  const url  = document.getElementById('cfgUrl').value.trim().replace(/\/$/, '');
+  const user = document.getElementById('cfgUser').value.trim();
+  const pass = document.getElementById('cfgPass').value;
+  if (!url || !user || !pass) { document.getElementById('cfgMsg').textContent = '❌ Preencha todos os campos'; return; }
+  SERVER = url;
+  AUTH   = 'Basic ' + btoa(user + ':' + pass);
+  localStorage.setItem('db_server', SERVER);
+  localStorage.setItem('db_auth',   AUTH);
+  document.getElementById('configOverlay').style.display = 'none';
+  // Recarregar produtos do servidor
+  loadServerProducts();
+}
+
+function clearConfig() {
+  localStorage.removeItem('db_auth');
+  localStorage.removeItem('db_server');
+  AUTH = ''; SERVER = 'https://dashbot.investidorbot.com';
+  document.getElementById('cfgUrl').value  = SERVER;
+  document.getElementById('cfgUser').value = '';
+  document.getElementById('cfgPass').value = '';
+  document.getElementById('configOverlay').style.display = 'flex';
+}
+
+// Map: ID local do admin → ID real do servidor
+// O admin usa nomes simples; o servidor usa prod_1000000XXX
+const PRODUCT_ID_MAP = {
+  'HULK':    'prod_1000000001',
+  'TORNADO': 'prod_1000000002',
+  'ADAM':    'prod_1000000003',
+  'SNAKE':   'prod_1000000004',
+  'KRYOS':   'prod_1000000005',
+  'IRON':    'prod_1000000006',
+  'DASHBOT': 'prod_1000000007',
+};
+
+// Cache local dos produtos do servidor
+let _serverProducts = [];
+
+// ── API helper ────────────────────────────────────────────────────
+async function apiCall(method, path, body) {
+  try {
+    const res = await fetch(SERVER + path, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'Authorization': AUTH },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    if (res.status === 401) {
+      // Credenciais erradas — limpar e pedir novamente
+      localStorage.removeItem('db_auth');
+      AUTH = '';
+      document.getElementById('cfgUrl').value  = SERVER;
+      document.getElementById('cfgUser').value = '';
+      document.getElementById('cfgPass').value = '';
+      document.getElementById('cfgMsg').textContent = '❌ Credenciais inválidas. Tente novamente.';
+      document.getElementById('configOverlay').style.display = 'flex';
+      return null;
+    }
+    return await res.json();
+  } catch (e) {
+    console.error('API error:', e);
+    showMsg('msg2', '❌ Erro ao conectar: ' + e.message, false);
+    return null;
+  }
+}
+
+// Converte ID local (número ou nome) para ID do servidor
+function toServerId(localId) {
+  // Se já é um prod_ ID, retornar direto
+  if (String(localId).startsWith('prod_')) return String(localId);
+  // Se é um número, mapear via posição nos produtos locais
+  const localProds = getProducts();
+  const p = localProds.find(x => x.id == localId);
+  if (!p) return null;
+  // Buscar pelo nome no mapa
+  const upperName = p.name.toUpperCase();
+  if (PRODUCT_ID_MAP[upperName]) return PRODUCT_ID_MAP[upperName];
+  // Tentar encontrar nos produtos do servidor pelo nome
+  const sp = _serverProducts.find(x => x.name.toUpperCase() === upperName);
+  return sp ? sp.id : null;
+}
+
+// ── DB_KEYS — localStorage (mantido para compatibilidade visual) ──
 const DB_KEYS = { PRODUCTS: 'dashbot_products', USERS: 'dashbot_users', LICENSES: 'dashbot_licenses' };
 const INITIAL_PRODUCTS = [
-  { id: 1, name: 'HULK', type: 'Expert Advisor', description: 'Robô de trading para futuros', active: true },
-  { id: 2, name: 'TORNADO', type: 'Expert Advisor', description: 'Robô de alta frequência', active: true },
-  { id: 3, name: 'ADAM', type: 'Expert Advisor', description: 'Robô para scalp', active: true },
-  { id: 4, name: 'SNAKE', type: 'Indicador', description: 'Indicador de tendências', active: true },
-  { id: 5, name: 'KRYOS', type: 'Expert Advisor', description: 'Robô multifuncional', active: true },
-  { id: 6, name: 'IRON', type: 'Expert Advisor', description: 'Robô para forex', active: true },
-  { id: 7, name: 'OMEGABOT', type: 'Expert Advisor', description: 'Robô completo', active: true },
-  { id: 8, name: 'DASHBOT', type: 'Dashboard', description: 'Painel de controle', active: true }
+  { id: 1, name: 'HULK',    type: 'Expert Advisor', description: 'Robô de trading para futuros', active: true },
+  { id: 2, name: 'TORNADO', type: 'Expert Advisor', description: 'Robô de alta frequência',      active: true },
+  { id: 3, name: 'ADAM',    type: 'Expert Advisor', description: 'Robô para scalp',               active: true },
+  { id: 4, name: 'SNAKE',   type: 'Indicador',      description: 'Indicador de tendências',       active: true },
+  { id: 5, name: 'KRYOS',   type: 'Expert Advisor', description: 'Robô multifuncional',           active: true },
+  { id: 6, name: 'IRON',    type: 'Expert Advisor', description: 'Robô para forex',               active: true },
+  { id: 7, name: 'OMEGABOT',type: 'Expert Advisor', description: 'Robô completo',                 active: true },
+  { id: 8, name: 'DASHBOT', type: 'Dashboard',      description: 'Painel de controle',            active: true }
 ];
 
 function showMsg(id, msg, ok) {
   const el = document.getElementById(id);
-  el.textContent = msg; 
-  el.className = 'msg ' + (ok ? 'ok' : 'err'); 
+  el.textContent = msg;
+  el.className = 'msg ' + (ok ? 'ok' : 'err');
   el.style.display = 'block';
   setTimeout(() => el.style.display = 'none', 4000);
 }
 
+// ── CRUD local (localStorage) ─────────────────────────────────────
+function initializeDatabase() {
+  if (!localStorage.getItem(DB_KEYS.PRODUCTS)) localStorage.setItem(DB_KEYS.PRODUCTS, JSON.stringify(INITIAL_PRODUCTS));
+  if (!localStorage.getItem(DB_KEYS.USERS))    localStorage.setItem(DB_KEYS.USERS,    JSON.stringify([]));
+  if (!localStorage.getItem(DB_KEYS.LICENSES)) localStorage.setItem(DB_KEYS.LICENSES, JSON.stringify([]));
+}
+function getProducts()   { return JSON.parse(localStorage.getItem(DB_KEYS.PRODUCTS) || '[]'); }
+function getUsers()      { return JSON.parse(localStorage.getItem(DB_KEYS.USERS)    || '[]'); }
+function getLicenses()   { return JSON.parse(localStorage.getItem(DB_KEYS.LICENSES) || '[]'); }
+function saveProducts(p) { localStorage.setItem(DB_KEYS.PRODUCTS, JSON.stringify(p)); }
+function saveUsers(u)    { localStorage.setItem(DB_KEYS.USERS,    JSON.stringify(u)); }
+function saveLicenses(l) { localStorage.setItem(DB_KEYS.LICENSES, JSON.stringify(l)); }
+
+// ── Dropdowns ─────────────────────────────────────────────────────
+function loadProductsDropdown(selector) {
+  const products = getProducts();
+  document.querySelectorAll(selector).forEach(dd => {
+    dd.innerHTML = '<option value="">Selecione...</option>';
+    products.filter(p => p.active).forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.id; o.textContent = p.name; dd.appendChild(o);
+    });
+  });
+}
+function loadProductsDropdownElement(dd, selectedValue = '') {
+  const products = getProducts();
+  dd.innerHTML = '<option value="">Selecione...</option>';
+  products.filter(p => p.active).forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.id; o.textContent = p.name; o.selected = (p.id == selectedValue); dd.appendChild(o);
+  });
+}
+
+// ── Tabela de Produtos ────────────────────────────────────────────
+function renderProductsTable() {
+  const table = document.getElementById('productsTable');
+  const products = getProducts();
+  table.innerHTML = '';
+  if (products.length === 0) { table.innerHTML = '<tr><td colspan="6" class="loading">Nenhum produto cadastrado</td></tr>'; return; }
+  products.forEach(p => {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td>${p.id}</td><td>${p.name}</td><td>${p.type}</td><td>${p.description||'-'}</td><td>${p.active?'✅':'❌'}</td>
+      <td><button class="btn-sm btn-blue" onclick="editProduct(${p.id})">Editar</button>
+          <button class="btn-sm" onclick="toggleProduct(${p.id})">${p.active?'Desativar':'Ativar'}</button>
+          <button class="btn-sm btn-red" onclick="delProd(${p.id})">Excluir</button></td>`;
+    table.appendChild(row);
+  });
+}
+
+// ── Tabela de Usuários ────────────────────────────────────────────
+function renderUsersTable() {
+  const table = document.getElementById('usersTable');
+  const searchTerm = document.getElementById('searchUser').value.toLowerCase();
+  const users = getUsers();
+  const licenses = getLicenses();
+  const products = getProducts();
+  table.innerHTML = '';
+  const filtered = users.filter(u =>
+    u.name.toLowerCase().includes(searchTerm) ||
+    (u.email && u.email.toLowerCase().includes(searchTerm)) ||
+    (u.phone && u.phone.toLowerCase().includes(searchTerm))
+  );
+  if (filtered.length === 0) { table.innerHTML = '<tr><td colspan="7" class="loading">Nenhum usuário encontrado</td></tr>'; return; }
+  filtered.forEach(user => {
+    const userLics = licenses.filter(l => l.userId === user.id);
+    const prodsInfo = userLics.map(l => { const p = products.find(x => x.id === l.productId); return p ? p.name : 'N/A'; }).join(', ');
+    const acctsInfo = userLics.map(l => `${l.account} (${l.accountType})`).join(', ');
+    const expInfo   = userLics.map(l => l.expiry || '-').join(', ');
+    const row = document.createElement('tr');
+    row.innerHTML = `<td>${user.name}</td><td>${user.email||'-'}</td><td>${user.phone||'-'}</td>
+      <td>${prodsInfo}</td><td>${acctsInfo}</td><td>${expInfo}</td>
+      <td><button class="btn-sm btn-blue" onclick="openEditUserModal(${user.id})">Editar</button>
+          <button class="btn-sm btn-red" onclick="deleteUser(${user.id})">Excluir</button></td>`;
+    table.appendChild(row);
+  });
+}
+
+function updateStats() {
+  const users = getUsers();
+  const licenses = getLicenses();
+  const now = new Date();
+  const expired = licenses.filter(l => l.expiry && new Date(l.expiry) < now).length;
+  document.getElementById('total-users').textContent   = users.length;
+  document.getElementById('premium-users').textContent = licenses.filter(l => l.accountType === 'real').length;
+  document.getElementById('trial-users').textContent   = licenses.filter(l => l.accountType === 'demo').length;
+  document.getElementById('expired-users').textContent = expired;
+  document.getElementById('active-users').textContent  = Math.max(0, licenses.length - expired);
+}
+
+// ── Inserir Manual (Bônus/Trial) ──────────────────────────────────
+async function inserirManual() {
+  const name        = document.getElementById('mName').value.trim();
+  const localProdId = document.getElementById('mProduct').value;
+  const account     = document.getElementById('mAcc').value.trim();
+  const accountType = document.getElementById('mAccountType').value;
+  const expiry      = document.getElementById('mExpiry').value;
+
+  if (!name || !localProdId || !account || !expiry) {
+    showMsg('msg2', '❌ Preencha todos os campos obrigatórios', false); return;
+  }
+
+  const serverProdId = toServerId(localProdId);
+  if (!serverProdId) { showMsg('msg2', '❌ Produto não mapeado para o servidor', false); return; }
+
+  const prod = _serverProducts.find(p => p.id === serverProdId);
+  const prodName = prod ? prod.name : serverProdId;
+
+  // 1. Criar/atualizar licença no servidor
+  const r1 = await apiCall('POST', '/admin/manual', { account, name, endDate: expiry });
+  if (!r1 || !r1.ok) { showMsg('msg2', '❌ Erro ao criar licença: ' + (r1?.error||'Servidor indisponível'), false); return; }
+
+  // 2. Atribuir produto COM todos os campos de restrição
+  const r2 = await apiCall('POST', '/admin/user-product', {
+    account, productId: serverProdId, name: prodName,
+    accountType,
+    accountReal: accountType === 'real' ? account : '',
+    accountDemo: accountType === 'demo' ? account : '',
+    minLots: 0, maxLots: 0, instances: 1
+  });
+  if (!r2 || !r2.ok) { showMsg('msg2', '❌ Licença criada mas produto não atribuído: ' + (r2?.error||''), false); return; }
+
+  // 3. Salvar localmente para exibição
+  try {
+    const users = getUsers();
+    const newUser = { id: Date.now(), name, created: new Date().toISOString() };
+    users.push(newUser); saveUsers(users);
+    const lics = getLicenses();
+    lics.push({ id: Date.now(), userId: newUser.id, productId: parseInt(localProdId), account, accountType, expiry, created: new Date().toISOString() });
+    saveLicenses(lics);
+  } catch(e) {}
+
+  showMsg('msg2', `✅ Licença inserida! Expira: ${r1.expiresStr}`, true);
+  document.getElementById('mName').value = '';
+  document.getElementById('mAcc').value  = '';
+  document.getElementById('mExpiry').value = '';
+  renderUsersTable(); updateStats();
+}
+
+// ── Modal de Usuário ──────────────────────────────────────────────
 function openAddUserModal() {
-  document.getElementById('userModalTitle').textContent = '➕ Adicionar Usuário';
+  document.getElementById('userModalTitle').textContent  = '➕ Adicionar Usuário';
   document.getElementById('userModalButton').textContent = 'Adicionar Usuário';
-  document.getElementById('uId').value = '';
-  document.getElementById('uName').value = '';
+  document.getElementById('uId').value    = '';
+  document.getElementById('uName').value  = '';
   document.getElementById('uEmail').value = '';
   document.getElementById('uPhone').value = '';
 
-  // Gera o HTML da linha de produto com opções já embutidas
   const products = getProducts();
-  const opts = products.filter(p => p.active).map(p =>
-    `<option value="${p.id}">${p.name}</option>`
-  ).join('');
+  const opts = products.filter(p => p.active).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  const defDate = (() => { const d = new Date(); d.setDate(d.getDate()+30); return d.toISOString().split('T')[0]; })();
+
   document.getElementById('productsContainer').innerHTML = `
     <div class="product-account-row">
-      <div class="fg" style="flex:2"><label>Produto</label>
-        <select class="user-product" style="width:100%">
-          <option value="">Selecione...</option>${opts}
-        </select>
+      <div class="fg" style="min-width:120px;flex:2"><label>Produto</label>
+        <select class="user-product" style="width:100%"><option value="">Selecione...</option>${opts}</select>
       </div>
-      <div class="fg" style="flex:1"><label>Conta MT5</label>
+      <div class="fg" style="min-width:110px;flex:1"><label>Conta MT5</label>
         <input type="number" class="user-account" placeholder="12345678">
       </div>
-      <div class="fg" style="width:90px"><label>Tipo</label>
-        <select class="user-account-type">
-          <option value="demo">Demo</option>
-          <option value="real">Real</option>
-        </select>
+      <div class="fg" style="width:82px"><label>Tipo</label>
+        <select class="user-account-type"><option value="demo">Demo</option><option value="real">Real</option></select>
       </div>
-      <div class="fg" style="width:80px"><label>Lote Mín</label>
+      <div class="fg" style="width:72px"><label>Lote Mín</label>
         <input type="number" class="user-minlots" placeholder="0.01" step="0.01" min="0">
       </div>
-      <div class="fg" style="width:80px"><label>Lote Máx</label>
+      <div class="fg" style="width:72px"><label>Lote Máx</label>
         <input type="number" class="user-maxlots" placeholder="1.00" step="0.01" min="0">
       </div>
-      <div class="fg" style="width:75px"><label>Instâncias</label>
+      <div class="fg" style="width:68px"><label>Instâncias</label>
         <input type="number" class="user-instances" placeholder="1" min="1" value="1">
       </div>
-      <div class="fg" style="flex:1"><label>Expiração</label>
-        <input type="date" class="product-expiry" style="width:100%">
+      <div class="fg" style="min-width:130px;flex:1"><label>Expiração</label>
+        <input type="date" class="product-expiry" style="width:100%" value="${defDate}">
       </div>
-      <button class="remove-product" onclick="removeProduct(this)">×</button>
+      <button class="remove-product" onclick="removeProduct(this)" style="align-self:flex-end">×</button>
     </div>`;
 
-  const defaultDate = new Date();
-  defaultDate.setDate(defaultDate.getDate() + 30);
-  document.querySelectorAll('#productsContainer .product-expiry').forEach(input => {
-    input.value = defaultDate.toISOString().split('T')[0];
-  });
   document.getElementById('userModal').style.display = 'block';
 }
 
 function openEditUserModal(userId) {
-  const users = getUsers();
+  const users    = getUsers();
   const licenses = getLicenses();
-  const user = users.find(u => u.id === userId);
-  const userLicenses = licenses.filter(l => l.userId === userId);
+  const user     = users.find(u => u.id === userId);
+  const userLics = licenses.filter(l => l.userId === userId);
   if (!user) return;
-  document.getElementById('userModalTitle').textContent = '✏️ Editar Usuário';
+
+  document.getElementById('userModalTitle').textContent  = '✏️ Editar Usuário';
   document.getElementById('userModalButton').textContent = 'Salvar Alterações';
-  document.getElementById('uId').value = user.id;
-  document.getElementById('uName').value = user.name || '';
+  document.getElementById('uId').value    = user.id;
+  document.getElementById('uName').value  = user.name  || '';
   document.getElementById('uEmail').value = user.email || '';
   document.getElementById('uPhone').value = user.phone || '';
 
-  const productsContainer = document.getElementById('productsContainer');
-  productsContainer.innerHTML = '';
-
-  if (userLicenses.length === 0) {
-    addProductField();
-  } else {
-    userLicenses.forEach(license => {
-      addProductField(license);
-    });
-  }
+  document.getElementById('productsContainer').innerHTML = '';
+  if (userLics.length === 0) addProductField(); else userLics.forEach(l => addProductField(l));
   document.getElementById('userModal').style.display = 'block';
 }
 
@@ -334,24 +586,22 @@ function closeUserModal() { document.getElementById('userModal').style.display =
 function addProductField(data) {
   data = data || {};
   const container = document.getElementById('productsContainer');
-  const newProduct = document.createElement('div');
-  newProduct.className = 'product-account-row';
+  const div = document.createElement('div');
+  div.className = 'product-account-row';
   const products = getProducts();
   const opts = products.filter(p => p.active).map(p =>
     `<option value="${p.id}" ${p.id == data.productId ? 'selected' : ''}>${p.name}</option>`
   ).join('');
   const d = new Date(); d.setDate(d.getDate()+30);
   const defDate = d.toISOString().split('T')[0];
-  newProduct.innerHTML = `
-    <div class="fg" style="flex:2"><label>Produto</label>
-      <select class="user-product" style="width:100%">
-        <option value="">Selecione...</option>${opts}
-      </select>
+  div.innerHTML = `
+    <div class="fg" style="min-width:120px;flex:2"><label>Produto</label>
+      <select class="user-product" style="width:100%"><option value="">Selecione...</option>${opts}</select>
     </div>
-    <div class="fg" style="flex:1"><label>Conta MT5</label>
+    <div class="fg" style="min-width:110px;flex:1"><label>Conta MT5</label>
       <input type="number" class="user-account" placeholder="12345678" value="${data.account||''}">
     </div>
-    <div class="fg" style="width:80px"><label>Tipo</label>
+    <div class="fg" style="width:82px"><label>Tipo</label>
       <select class="user-account-type">
         <option value="demo" ${(data.accountType||'demo')==='demo'?'selected':''}>Demo</option>
         <option value="real" ${data.accountType==='real'?'selected':''}>Real</option>
@@ -363,14 +613,14 @@ function addProductField(data) {
     <div class="fg" style="width:72px"><label>Lote Máx</label>
       <input type="number" class="user-maxlots" placeholder="1.00" step="0.01" min="0" value="${data.maxLots||''}">
     </div>
-    <div class="fg" style="width:70px"><label>Instâncias</label>
+    <div class="fg" style="width:68px"><label>Instâncias</label>
       <input type="number" class="user-instances" placeholder="1" min="1" value="${data.instances||1}">
     </div>
-    <div class="fg" style="flex:1"><label>Expiração</label>
+    <div class="fg" style="min-width:130px;flex:1"><label>Expiração</label>
       <input type="date" class="product-expiry" style="width:100%" value="${data.expiry||defDate}">
     </div>
-    <button class="remove-product" onclick="removeProduct(this)">×</button>`;
-  container.appendChild(newProduct);
+    <button class="remove-product" onclick="removeProduct(this)" style="align-self:flex-end">×</button>`;
+  container.appendChild(div);
 }
 
 function removeProduct(button) {
@@ -378,198 +628,160 @@ function removeProduct(button) {
   else showMsg('modalMsg', 'É necessário ter pelo menos um produto.', false);
 }
 
-function initializeDatabase() {
-  if (!localStorage.getItem(DB_KEYS.PRODUCTS)) localStorage.setItem(DB_KEYS.PRODUCTS, JSON.stringify(INITIAL_PRODUCTS));
-  if (!localStorage.getItem(DB_KEYS.USERS)) localStorage.setItem(DB_KEYS.USERS, JSON.stringify([]));
-  if (!localStorage.getItem(DB_KEYS.LICENSES)) localStorage.setItem(DB_KEYS.LICENSES, JSON.stringify([]));
-}
+// ── Salvar Usuário (envia para o servidor) ────────────────────────
+async function saveUser() {
+  const userId  = document.getElementById('uId').value;
+  const name    = document.getElementById('uName').value.trim();
+  const email   = document.getElementById('uEmail').value.trim();
+  const phone   = document.getElementById('uPhone').value.trim();
+  const modal   = document.getElementById('userModal');
 
-function getProducts() { return JSON.parse(localStorage.getItem(DB_KEYS.PRODUCTS) || '[]'); }
-function getUsers() { return JSON.parse(localStorage.getItem(DB_KEYS.USERS) || '[]'); }
-function getLicenses() { return JSON.parse(localStorage.getItem(DB_KEYS.LICENSES) || '[]'); }
-function saveProducts(p) { localStorage.setItem(DB_KEYS.PRODUCTS, JSON.stringify(p)); }
-function saveUsers(u) { localStorage.setItem(DB_KEYS.USERS, JSON.stringify(u)); }
-function saveLicenses(l) { localStorage.setItem(DB_KEYS.LICENSES, JSON.stringify(l)); }
-
-function loadProductsDropdown(selector) {
-  const dropdowns = document.querySelectorAll(selector);
-  const products = getProducts();
-  dropdowns.forEach(dropdown => {
-    dropdown.innerHTML = '<option value="">Selecione...</option>';
-    products.forEach(p => { if (p.active) {
-      const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; dropdown.appendChild(opt);
-    }});
-  });
-}
-
-function loadProductsDropdownElement(dropdown, selectedValue = '') {
-  const products = getProducts();
-  dropdown.innerHTML = '<option value="">Selecione...</option>';
-  products.forEach(p => { if (p.active) {
-    const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; opt.selected = (p.id == selectedValue); dropdown.appendChild(opt);
-  }});
-}
-
-function renderProductsTable() {
-  const table = document.getElementById('productsTable');
-  const products = getProducts();
-  table.innerHTML = '';
-  if (products.length === 0) { table.innerHTML = '<tr><td colspan="6" class="loading">Nenhum produto cadastrado</td></tr>'; return; }
-  products.forEach(product => {
-    const row = document.createElement('tr');
-    row.innerHTML = `<td>${product.id}</td><td>${product.name}</td><td>${product.type}</td><td>${product.description || '-'}</td><td>${product.active ? '✅' : '❌'}</td>
-      <td><button class="btn-sm btn-blue" onclick="editProduct(${product.id})">Editar</button><button class="btn-sm" onclick="toggleProduct(${product.id})">${product.active ? 'Desativar' : 'Ativar'}</button><button class="btn-sm btn-red" onclick="delProd(${product.id})">Excluir</button></td>`;
-    table.appendChild(row);
-  });
-}
-
-function renderUsersTable() {
-  const table = document.getElementById('usersTable');
-  const searchTerm = document.getElementById('searchUser').value.toLowerCase();
-  const users = getUsers();
-  const licenses = getLicenses();
-  const products = getProducts();
-  table.innerHTML = '';
-  const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchTerm) || 
-    (u.email && u.email.toLowerCase().includes(searchTerm)) || 
-    (u.phone && u.phone.toLowerCase().includes(searchTerm))
-  );
-  if (filteredUsers.length === 0) { table.innerHTML = '<tr><td colspan="7" class="loading">Nenhum usuário encontrado</td></tr>'; return; }
-  filteredUsers.forEach(user => {
-    const userLicenses = licenses.filter(l => l.userId === user.id);
-    const productsInfo = userLicenses.map(l => {
-      const p = products.find(prod => prod.id === l.productId); return p ? p.name : 'N/A';
-    }).join(', ');
-    const accountsInfo = userLicenses.map(l => `${l.account} (${l.accountType})`).join(', ');
-    const expiryInfo = userLicenses.map(l => l.expiry || '-').join(', ');
-    const row = document.createElement('tr');
-    row.innerHTML = `<td>${user.name}</td><td>${user.email || '-'}</td><td>${user.phone || '-'}</td><td>${productsInfo}</td><td>${accountsInfo}</td><td>${expiryInfo}</td>
-      <td><button class="btn-sm btn-blue" onclick="openEditUserModal(${user.id})">Editar</button><button class="btn-sm btn-red" onclick="deleteUser(${user.id})">Excluir</button></td>`;
-    table.appendChild(row);
-  });
-}
-
-function updateStats() {
-  const users = getUsers();
-  const licenses = getLicenses();
-  document.getElementById('total-users').textContent = users.length;
-  document.getElementById('premium-users').textContent = licenses.filter(l => l.accountType === 'real').length;
-  document.getElementById('trial-users').textContent = licenses.filter(l => l.accountType === 'demo').length;
-  document.getElementById('expired-users').textContent = Math.floor(users.length * 0.15);
-  document.getElementById('active-users').textContent = Math.floor(users.length * 0.7);
-}
-
-function inserirManual() {
-  const name = document.getElementById('mName').value;
-  const productId = parseInt(document.getElementById('mProduct').value);
-  const account = document.getElementById('mAcc').value;
-  const accountType = document.getElementById('mAccountType').value;
-  const expiry = document.getElementById('mExpiry').value;
-  if (!name || !productId || !account || !expiry) { showMsg('msg2', '❌ Preencha todos os campos obrigatórios', false); return; }
-  try {
-    const users = getUsers();
-    const newUser = { id: Date.now(), name, created: new Date().toISOString() };
-    users.push(newUser); saveUsers(users);
-    const licenses = getLicenses();
-    licenses.push({ id: Date.now(), userId: newUser.id, productId, account, accountType, expiry, created: new Date().toISOString() });
-    saveLicenses(licenses);
-    showMsg('msg2', '✅ Licença inserida com sucesso!', true);
-    document.getElementById('mName').value = ''; document.getElementById('mAcc').value = ''; document.getElementById('mExpiry').value = '';
-    renderUsersTable(); updateStats();
-  } catch (e) { showMsg('msg2', '❌ Erro ao inserir licença', false); }
-}
-
-function addProd() {
-  const name = document.getElementById('pName').value;
-  const type = document.getElementById('pType').value;
-  const description = document.getElementById('pDesc').value;
-  if (!name || !type) { showMsg('msg3', '❌ Preencha pelo menos nome e tipo', false); return; }
-  try {
-    const products = getProducts();
-    products.push({ id: Date.now(), name, type, description, active: true });
-    saveProducts(products);
-    showMsg('msg3', '✅ Produto adicionado!', true);
-    document.getElementById('pName').value = '';
-    document.getElementById('pDesc').value = '';
-    renderProductsTable();
-    loadProductsDropdown('#mProduct');
-  } catch (e) { showMsg('msg3', '❌ Erro ao adicionar produto', false); }
-}
-
-function saveUser() {
-  const userId = document.getElementById('uId').value;
-  const name = document.getElementById('uName').value;
-  const email = document.getElementById('uEmail').value;
-  const phone = document.getElementById('uPhone').value;
-
-  // Busca APENAS dentro do modal, não em toda a página
-  const modal = document.getElementById('userModal');
+  // Coletar produtos do modal
   const userProducts = [];
   modal.querySelectorAll('.product-account-row').forEach(row => {
-    const productId = parseInt(row.querySelector('.user-product').value);
-    const account = row.querySelector('.user-account').value;
+    const localProdId = row.querySelector('.user-product').value;
+    const account     = row.querySelector('.user-account').value.trim();
     const accountType = row.querySelector('.user-account-type').value;
-    const minLots = parseFloat(row.querySelector('.user-minlots').value) || 0;
-    const maxLots = parseFloat(row.querySelector('.user-maxlots').value) || 0;
-    const instances = parseInt(row.querySelector('.user-instances').value) || 1;
-    const expiry = row.querySelector('.product-expiry').value;
-    if (productId && account) userProducts.push({ productId, account, accountType, minLots, maxLots, instances, expiry });
+    const minLots     = parseFloat(row.querySelector('.user-minlots').value)   || 0;
+    const maxLots     = parseFloat(row.querySelector('.user-maxlots').value)   || 0;
+    const instances   = parseInt(row.querySelector('.user-instances').value)   || 1;
+    const expiry      = row.querySelector('.product-expiry').value;
+    if (localProdId && account) {
+      userProducts.push({ localProdId, account, accountType, minLots, maxLots, instances, expiry });
+    }
   });
 
-  if (!name || userProducts.length === 0) { showMsg('modalMsg', '❌ Preencha os campos obrigatórios', false); return; }
+  if (!name || userProducts.length === 0) {
+    showMsg('modalMsg', '❌ Preencha nome e pelo menos um produto', false); return;
+  }
+
+  // Verificar mapeamento de IDs antes de qualquer chamada
+  for (const up of userProducts) {
+    const sid = toServerId(up.localProdId);
+    if (!sid) { showMsg('modalMsg', `❌ Produto ID ${up.localProdId} sem mapeamento no servidor`, false); return; }
+    up.serverProdId = sid;
+  }
+
+  showMsg('modalMsg', '⏳ Salvando no servidor...', true);
+
   try {
-    const users = getUsers();
-    let user;
-    if (userId) {
-      user = users.find(u => u.id == userId);
-      if (user) { user.name = name; user.email = email; user.phone = phone; }
-      saveUsers(users);
-      // Remove licenças antigas deste usuário e recria com as novas
-      const otherLicenses = getLicenses().filter(l => l.userId != userId);
-      const newLicenses = userProducts.map(up => ({
-        id: Date.now() + Math.random(),
-        userId: user.id,
-        productId: up.productId,
-        account: up.account,
-        accountType: up.accountType,
-        expiry: up.expiry,
-        created: new Date().toISOString()
-      }));
-      saveLicenses([...otherLicenses, ...newLicenses]);
-    } else {
-      user = { id: Date.now(), name, email, phone, created: new Date().toISOString() };
-      users.push(user);
-      saveUsers(users);
-      const existingLicenses = getLicenses();
-      const newLicenses = userProducts.map(up => ({
-        id: Date.now() + Math.random(),
-        userId: user.id,
-        productId: up.productId,
-        account: up.account,
-        accountType: up.accountType,
-        expiry: up.expiry,
-        created: new Date().toISOString()
-      }));
-      saveLicenses([...existingLicenses, ...newLicenses]);
+    // Agrupar por conta MT5 (cada conta precisa de um registro separado no servidor)
+    const byAccount = {};
+    userProducts.forEach(up => {
+      if (!byAccount[up.account]) byAccount[up.account] = [];
+      byAccount[up.account].push(up);
+    });
+
+    for (const [account, prods] of Object.entries(byAccount)) {
+      const mainExpiry = prods[0].expiry;
+
+      if (userId) {
+        // Editar: atualizar dados do usuário
+        await apiCall('PUT', '/admin/user', { account, name, email, phone });
+        // Atualizar período se necessário
+        await apiCall('POST', '/admin/license', { account, name, endDate: mainExpiry });
+      } else {
+        // Novo usuário: registrar com todos os produtos da conta
+        const serverProds = prods.map(up => ({
+          productId:   up.serverProdId,
+          accountType: up.accountType,
+          accountReal: up.accountType === 'real' ? account : '',
+          accountDemo: up.accountType === 'demo' ? account : '',
+          minLots:     up.minLots,
+          maxLots:     up.maxLots,
+          instances:   up.instances
+        }));
+        const r = await apiCall('POST', '/admin/register', {
+          account, name, email, phone,
+          products: serverProds,
+          endDate: mainExpiry
+        });
+        if (!r || !r.ok) {
+          showMsg('modalMsg', '❌ Erro ao registrar conta ' + account + ': ' + (r?.error||''), false);
+          loading(false);
+          return;
+        }
+      }
+
+      // Atribuir/atualizar cada produto com restrições completas
+      for (const up of prods) {
+        const prod = _serverProducts.find(p => p.id === up.serverProdId);
+        await apiCall('POST', '/admin/user-product', {
+          account,
+          productId:   up.serverProdId,
+          name:        prod ? prod.name : up.serverProdId,
+          accountType: up.accountType,
+          accountReal: up.accountType === 'real' ? account : '',
+          accountDemo: up.accountType === 'demo' ? account : '',
+          minLots:     up.minLots,
+          maxLots:     up.maxLots,
+          instances:   up.instances
+        });
+      }
     }
-    showMsg('modalMsg', userId ? '✅ Usuário atualizado!' : '✅ Usuário adicionado!', true);
+
+    // Salvar localmente para exibição imediata
+    const users  = getUsers();
+    const lics   = getLicenses();
+    let localUser;
+    if (userId) {
+      localUser = users.find(u => u.id == userId);
+      if (localUser) { localUser.name = name; localUser.email = email; localUser.phone = phone; }
+      saveUsers(users);
+      const otherLics = lics.filter(l => l.userId != userId);
+      const newLics = userProducts.map(up => ({
+        id: Date.now() + Math.random(), userId: parseInt(userId),
+        productId: parseInt(up.localProdId), account: up.account,
+        accountType: up.accountType, minLots: up.minLots,
+        maxLots: up.maxLots, instances: up.instances, expiry: up.expiry,
+        created: new Date().toISOString()
+      }));
+      saveLicenses([...otherLics, ...newLics]);
+    } else {
+      localUser = { id: Date.now(), name, email, phone, created: new Date().toISOString() };
+      users.push(localUser); saveUsers(users);
+      const newLics = userProducts.map(up => ({
+        id: Date.now() + Math.random(), userId: localUser.id,
+        productId: parseInt(up.localProdId), account: up.account,
+        accountType: up.accountType, minLots: up.minLots,
+        maxLots: up.maxLots, instances: up.instances, expiry: up.expiry,
+        created: new Date().toISOString()
+      }));
+      saveLicenses([...lics, ...newLics]);
+    }
+
+    showMsg('modalMsg', userId ? '✅ Usuário atualizado no servidor!' : '✅ Usuário registrado no servidor!', true);
     setTimeout(() => { closeUserModal(); renderUsersTable(); updateStats(); }, 1000);
-  } catch (e) { showMsg('modalMsg', '❌ Erro ao salvar usuário', false); }
+
+  } catch(e) {
+    showMsg('modalMsg', '❌ Erro: ' + e.message, false);
+  }
+}
+
+// ── Produtos (local) ──────────────────────────────────────────────
+function addProd() {
+  const name = document.getElementById('pName').value.trim();
+  const type = document.getElementById('pType').value;
+  const desc = document.getElementById('pDesc').value.trim();
+  if (!name || !type) { showMsg('msg3', '❌ Preencha nome e tipo', false); return; }
+  const products = getProducts();
+  products.push({ id: Date.now(), name, type, description: desc, active: true });
+  saveProducts(products);
+  showMsg('msg3', '✅ Produto adicionado!', true);
+  document.getElementById('pName').value = '';
+  document.getElementById('pDesc').value = '';
+  renderProductsTable();
+  loadProductsDropdown('#mProduct');
 }
 
 function editProduct(id) {
   const products = getProducts();
-  const product = products.find(p => p.id === id);
+  const product  = products.find(p => p.id === id);
   if (!product) return;
-
-  // Cria modal inline de edição
   let modal = document.getElementById('editProdModal');
   if (!modal) {
     modal = document.createElement('div');
-    modal.id = 'editProdModal';
-    modal.className = 'modal';
-    modal.style.display = 'none';
+    modal.id = 'editProdModal'; modal.className = 'modal'; modal.style.display = 'none';
     modal.innerHTML = `
       <div class="modal-content" style="max-width:480px">
         <div class="modal-header">
@@ -579,20 +791,17 @@ function editProduct(id) {
         <div class="modal-body">
           <div id="editProdMsg" class="msg"></div>
           <div class="form-row" style="margin-bottom:10px">
-            <div class="fg" style="width:100%">
-              <label>ID</label>
+            <div class="fg" style="width:100%"><label>ID</label>
               <input type="text" id="eProdId" style="width:100%;opacity:.6" readonly>
             </div>
           </div>
           <div class="form-row" style="margin-bottom:10px">
-            <div class="fg" style="width:100%">
-              <label>Nome *</label>
+            <div class="fg" style="width:100%"><label>Nome *</label>
               <input type="text" id="eProdName" style="width:100%">
             </div>
           </div>
           <div class="form-row" style="margin-bottom:10px">
-            <div class="fg" style="width:100%">
-              <label>Tipo</label>
+            <div class="fg" style="width:100%"><label>Tipo</label>
               <select id="eProdType" style="width:100%">
                 <option value="ea">Expert Advisor</option>
                 <option value="indicator">Indicador</option>
@@ -602,8 +811,7 @@ function editProduct(id) {
             </div>
           </div>
           <div class="form-row" style="margin-bottom:16px">
-            <div class="fg" style="width:100%">
-              <label>Descrição</label>
+            <div class="fg" style="width:100%"><label>Descrição</label>
               <input type="text" id="eProdDesc" style="width:100%">
             </div>
           </div>
@@ -615,8 +823,7 @@ function editProduct(id) {
       </div>`;
     document.body.appendChild(modal);
   }
-
-  document.getElementById('eProdId').value = product.id;
+  document.getElementById('eProdId').value   = product.id;
   document.getElementById('eProdName').value = product.name;
   document.getElementById('eProdType').value = product.type.toLowerCase().replace(' ','_') || 'ea';
   document.getElementById('eProdDesc').value = product.description || '';
@@ -632,12 +839,10 @@ function saveEditProduct() {
   const products = getProducts();
   const idx = products.findIndex(p => p.id == id);
   if (idx === -1) return;
-  products[idx].name = name;
-  products[idx].type = type;
-  products[idx].description = desc;
+  products[idx].name = name; products[idx].type = type; products[idx].description = desc;
   saveProducts(products);
   renderProductsTable();
-  loadProductsDropdown('#mProduct'); // só o dropdown da seção de inserção
+  loadProductsDropdown('#mProduct');
   document.getElementById('editProdModal').style.display = 'none';
   showMsg('msg3', '✅ Produto atualizado!', true);
 }
@@ -645,38 +850,68 @@ function saveEditProduct() {
 function toggleProduct(id) {
   const products = getProducts();
   const idx = products.findIndex(p => p.id === id);
-  if (idx !== -1) {
-    products[idx].active = !products[idx].active;
-    saveProducts(products);
-    renderProductsTable();
-    loadProductsDropdown('#mProduct');
-  }
+  if (idx !== -1) { products[idx].active = !products[idx].active; saveProducts(products); renderProductsTable(); loadProductsDropdown('#mProduct'); }
 }
 
 function delProd(id) {
   if (!confirm('Remover produto?')) return;
-  const products = getProducts().filter(p => p.id !== id);
-  saveProducts(products);
-  renderProductsTable();
-  loadProductsDropdown('#mProduct');
+  saveProducts(getProducts().filter(p => p.id !== id));
+  renderProductsTable(); loadProductsDropdown('#mProduct');
 }
 
-function deleteUser(id) {
+// ── Limpar banco completo ─────────────────────────────────────────
+async function limparBanco() {
+  if (!confirm('⚠️ ATENÇÃO: Isso vai remover TODOS os usuários e licenças do servidor.\n\nOs produtos do catálogo serão preservados.\n\nConfirma?')) return;
+  if (!confirm('Tem certeza? Esta ação não pode ser desfeita.')) return;
+  const r = await apiCall('DELETE', '/admin/wipe');
+  if (r && r.ok) {
+    // Limpar também o localStorage
+    saveUsers([]); saveLicenses([]);
+    showMsg('msg2', `✅ Banco limpo! ${r.accountsRemoved} conta(s) removida(s).`, true);
+    renderUsersTable(); updateStats();
+  } else {
+    showMsg('msg2', '❌ Erro ao limpar banco: ' + (r?.error || 'Servidor indisponível'), false);
+  }
+}
+async function deleteUser(id) {
   if (!confirm('Remover usuário?')) return;
+  // Tentar remover do servidor usando a conta da primeira licença
+  const lics = getLicenses().filter(l => l.userId === id);
+  for (const l of lics) {
+    await apiCall('DELETE', '/admin/user', { account: String(l.account) });
+  }
+  // Remover localmente
+  saveUsers(getLicenses().filter(u => u.id !== id));
   saveUsers(getUsers().filter(u => u.id !== id));
   saveLicenses(getLicenses().filter(l => l.userId !== id));
   renderUsersTable(); updateStats();
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+// ── Init ──────────────────────────────────────────────────────────
+async function loadServerProducts() {
+  try {
+    const r = await apiCall('GET', '/admin/products');
+    if (r && r.products) {
+      _serverProducts = r.products;
+      console.log('[Admin] Produtos carregados:', _serverProducts.map(p => p.id+':'+p.name).join(', '));
+    }
+  } catch(e) { console.warn('[Admin] Produtos não carregados:', e.message); }
+}
+
+document.addEventListener('DOMContentLoaded', async function() {
   initializeDatabase();
   renderProductsTable();
   renderUsersTable();
   updateStats();
   loadProductsDropdown('#mProduct');
+
   const defaultDate = new Date();
   defaultDate.setDate(defaultDate.getDate() + 30);
   document.getElementById('mExpiry').value = defaultDate.toISOString().split('T')[0];
+
+  // Verificar credenciais e carregar produtos do servidor
+  checkCredentials();
+  if (AUTH) await loadServerProducts();
 });
 
 window.onclick = function(event) {
