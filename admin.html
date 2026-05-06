@@ -644,36 +644,71 @@ async function saveUser() {
 
   showMsg('modalMsg','Salvando...', true);
 
-  var byAcct={};
-  prods.forEach(function(p){ if(!byAcct[p.acct]) byAcct[p.acct]=[]; byAcct[p.acct].push(p); });
+  if (editId) {
+    // ── EDIÇÃO: manter cadastro único pelo editId (conta original) ──
+    // 1. Atualizar dados pessoais na conta original
+    var r0 = await api('PUT','/admin/user',{account:editId,name:name,email:email,phone:phone});
 
-  var accts=Object.keys(byAcct);
-  for (var a=0; a<accts.length; a++) {
-    var acct=accts[a]; var ps=byAcct[acct];
-    if (editId) {
-      await api('PUT','/admin/user',{account:acct,name:name,email:email,phone:phone});
-      await api('POST','/admin/license',{account:acct,name:name,endDate:ps[0].exp});
-    } else {
-      var serverProds=ps.map(function(p){return {productId:p.sid,accountType:p.type,accountReal:p.type==='real'?acct:'',accountDemo:p.type==='demo'?acct:'',minLots:p.minL,maxLots:p.maxL,instances:p.inst};});
-      var r=await api('POST','/admin/register',{account:acct,name:name,email:email,phone:phone,products:serverProds,endDate:ps[0].exp});
+    // 2. Atualizar licença com a primeira expiração informada
+    var firstExp = prods.length > 0 ? prods[0].exp : '';
+    if (firstExp) {
+      await api('POST','/admin/license',{account:editId,name:name,endDate:firstExp});
+    }
+
+    // 3. Atribuir TODOS os produtos ao mesmo cadastro (conta original)
+    for (var i=0; i<prods.length; i++) {
+      var p = prods[i];
+      var sp = _serverProds.find(function(x){return x.id===p.sid;});
+      await api('POST','/admin/user-product',{
+        account:   editId,
+        productId: p.sid,
+        name:      sp ? sp.name : p.sid,
+        accountType:  p.type,
+        accountReal:  p.type==='real' ? p.acct : '',
+        accountDemo:  p.type==='demo' ? p.acct : '',
+        minLots:   p.minL,
+        maxLots:   p.maxL,
+        instances: p.inst
+      });
+    }
+
+  } else {
+    // ── NOVO USUÁRIO: agrupar por conta MT5 ──────────────────────
+    var byAcct={};
+    prods.forEach(function(p){ if(!byAcct[p.acct]) byAcct[p.acct]=[]; byAcct[p.acct].push(p); });
+    var accts=Object.keys(byAcct);
+    for (var a=0; a<accts.length; a++) {
+      var acct=accts[a]; var ps=byAcct[acct];
+      var serverProds=ps.map(function(p){return {
+        productId:p.sid,accountType:p.type,
+        accountReal:p.type==='real'?acct:'',accountDemo:p.type==='demo'?acct:'',
+        minLots:p.minL,maxLots:p.maxL,instances:p.inst
+      };});
+      var r=await api('POST','/admin/register',{
+        account:acct,name:name,email:email,phone:phone,
+        products:serverProds,endDate:ps[0].exp
+      });
       if (!r) {
-        showMsg('modalMsg','Sem resposta do servidor ao registrar conta '+acct+'. Verifique o console.',false);
+        showMsg('modalMsg','Sem resposta do servidor ao registrar conta '+acct+'.',false);
         return;
       }
       if (!r.ok) {
         var errDetail = r.error || JSON.stringify(r);
         showMsg('modalMsg','Erro na conta '+acct+': '+errDetail,false);
-        console.error('Register error response:', r);
         return;
       }
-    }
-    for (var j=0; j<ps.length; j++) {
-      var p=ps[j];
-      var sp=_serverProds.find(function(x){return x.id===p.sid;});
-      await api('POST','/admin/user-product',{account:acct,productId:p.sid,name:sp?sp.name:p.sid,accountType:p.type,accountReal:p.type==='real'?acct:'',accountDemo:p.type==='demo'?acct:'',minLots:p.minL,maxLots:p.maxL,instances:p.inst});
+      // Atribuir produtos com todos os detalhes
+      for (var j=0; j<ps.length; j++) {
+        var p=ps[j];
+        var sp=_serverProds.find(function(x){return x.id===p.sid;});
+        await api('POST','/admin/user-product',{
+          account:acct,productId:p.sid,name:sp?sp.name:p.sid,
+          accountType:p.type,accountReal:p.type==='real'?acct:'',accountDemo:p.type==='demo'?acct:'',
+          minLots:p.minL,maxLots:p.maxL,instances:p.inst
+        });
+      }
     }
   }
-
   showMsg('modalMsg', editId ? 'Atualizado!' : 'Usuario registrado!', true);
   setTimeout(async function() {
     closeUserModal();
