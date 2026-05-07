@@ -153,14 +153,12 @@ input:focus,select:focus{outline:none;border-color:#388bfd}
   <table>
     <thead>
       <tr>
-        <th>Conta MT5</th>
-        <th>Nome / Contato</th>
-        <th>Plano</th>
-        <th>Validade</th>
-        <th>Último Acesso</th>
+        <th>Nome</th>
+        <th>Email</th>
+        <th>Telefone</th>
         <th>Produtos</th>
         <th>Ações</th>
-      </tr>
+</tr>
     </thead>
     <tbody id="usersTable">
       <tr><td colspan="7" class="loading">Carregando usuários...</td></tr>
@@ -431,44 +429,26 @@ function renderUsersFromData(users, stats) {
   _usersCache = users || [];
   var tb = document.getElementById("usersTable");
   if (!users || !users.length) {
-    tb.innerHTML = '<tr><td colspan="7" class="loading">Nenhum usuario cadastrado</td></tr>';
+    tb.innerHTML = '<tr><td colspan="5" class="loading">Nenhum usuario cadastrado</td></tr>';
     if (stats) updateStats(stats);
     return;
   }
-  var colors = { lifetime:"#7c3aed", premium:"#10b981", trial:"#3b82f6" };
   var html = "";
   for (var i = 0; i < users.length; i++) {
     var u = users[i];
-    var bc = colors[u.plan] || "#ef4444";
     var ac = u.account;
+    // Produtos apenas nome+tipo
+    var prodsHtml = (u.products||[]).map(function(p){
+      return '<span style="background:#1e2438;padding:2px 5px;border-radius:4px;font-size:10px;display:inline-block;margin:1px">'
+           + p.name + (p.accountType?"("+p.accountType+")":"") + "</span>";
+    }).join("") || "—";
 
-    // Coluna Produtos (nome+tipo)
-    var prodsHtml = "";
-    for (var j = 0; j < (u.products||[]).length; j++) {
-      var p = u.products[j];
-      prodsHtml += '<span style="background:#1e2438;padding:2px 5px;border-radius:4px;font-size:10px;display:inline-block;margin:1px">'
-                 + p.name + (p.accountType ? "("+p.accountType+")" : "") + "</span>";
-    }
-    prodsHtml += '<br><button class="btn-sm" onclick="addUserProd(''+ac+'')">+ Produto</button>';
-
-    html += "<tr>";
-    // 1. Conta MT5
-    html += "<td><code>" + ac + "</code></td>";
-    // 2. Nome / Contato
-    html += "<td>" + (u.name||"—")
-          + '<br><small style="color:#64748b">'
-          + (u.email||"") + (u.phone ? " · "+u.phone : "")
-          + "</small></td>";
-    // 3. Plano
-    html += '<td><span class="badge" style="background:'+bc+'">'+u.plan+"</span></td>";
-    // 4. Validade
-    html += "<td>" + (u.endDate||"—") + "</td>";
-    // 5. Último Acesso
-    html += "<td>" + (u.lastSeen||"—") + "</td>";
-    // 6. Produtos
-    html += "<td>" + (prodsHtml||"—") + "</td>";
-    // 7. Ações
     var sn = encodeURIComponent(u.name||"");
+    html += "<tr>";
+    html += "<td>" + (u.name||"—") + "</td>";
+    html += "<td>" + (u.email||"—") + "</td>";
+    html += "<td>" + (u.phone||"—") + "</td>";
+    html += "<td>" + prodsHtml + "</td>";
     html += "<td>";
     html += '<button class="btn-sm" onclick="editUserFull(''+ac+'')" title="Editar">✏️</button> ';
     html += '<button class="btn-sm" onclick="bonusModal(''+ac+"','"+sn+'')" title="Licença">📅</button> ';
@@ -480,6 +460,7 @@ function renderUsersFromData(users, stats) {
   tb.innerHTML = html;
   if (stats) updateStats(stats);
 }
+
 
 function updateStats(stats) {
   var sm = {total:"total-users",premium:"premium-users",trial:"trial-users",expired:"expired-users",active:"active-users"};
