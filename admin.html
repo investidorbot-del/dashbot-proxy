@@ -649,10 +649,18 @@ async function saveUser() {
     // 1. Atualizar dados pessoais na conta original
     var r0 = await api('PUT','/admin/user',{account:editId,name:name,email:email,phone:phone});
 
-    // 2. Atualizar licença com a primeira expiração informada
-    var firstExp = prods.length > 0 ? prods[0].exp : '';
-    if (firstExp) {
-      await api('POST','/admin/license',{account:editId,name:name,endDate:firstExp});
+    // 2. Atualizar licença com a maior data de expiração informada
+    var bestExp = '';
+    for (var ei=0; ei<prods.length; ei++) {
+      var ep = prods[ei].exp;
+      if (ep && (!bestExp || ep > bestExp)) bestExp = ep;
+    }
+    if (bestExp) {
+      var r1 = await api('POST','/admin/license',{account:editId,name:name,endDate:bestExp});
+      if (!r1 || !r1.ok) {
+        showMsg('modalMsg','Erro ao salvar licenca: '+(r1?r1.error||JSON.stringify(r1):'sem resposta'),false);
+        return;
+      }
     }
 
     // 3. Atribuir TODOS os produtos ao mesmo cadastro (conta original)
@@ -712,8 +720,10 @@ async function saveUser() {
   showMsg('modalMsg', editId ? 'Atualizado!' : 'Usuario registrado!', true);
   setTimeout(async function() {
     closeUserModal();
+    // Aguardar um pouco mais para o servidor processar antes de recarregar
+    await new Promise(function(r){setTimeout(r,300);});
     await loadUsersTable();
-  }, 700);
+  }, 500);
 }
 
 // ── Botoes da tabela gerada pelo servidor ─────────────────────────
@@ -750,7 +760,13 @@ function editUserFull(acct) {
         minLots:   p.minLots   || 0,
         maxLots:   p.maxLots   || 0,
         instances: p.instances || 1,
-        expiry:    u.endDate   || ''
+        expiry:    (function(d){
+          if(!d) return '';
+          // Converter dd/mm/yyyy para yyyy-mm-dd
+          var m=d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+          if(m) return m[3]+'-'+m[2]+'-'+m[1];
+          return d; // já está em ISO
+        })(u.endDate)
       }));
     }
   } else {
