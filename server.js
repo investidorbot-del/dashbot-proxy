@@ -501,7 +501,13 @@ http.createServer(async(req,res)=>{
       let type='trial',premiumEnd=null;
       const trialEnd=(existing&&existing.trialEnd)||(now+TRIAL_DAYS*DAY_MS);
       if(d.lifetime){type='lifetime';}
-      else if(d.endDate){type='premium';premiumEnd=new Date(d.endDate).getTime();}
+      else if(d.endDate){
+        type='premium';
+        let ed=d.endDate;
+        const mBR=ed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if(mBR) ed=mBR[3]+'-'+mBR[2]+'-'+mBR[1];
+        premiumEnd=new Date(ed+' 23:59:59').getTime();
+      }
       else if(existing&&(existing.type==='premium'||existing.type==='lifetime')){type=existing.type;premiumEnd=existing.premiumEnd||null;}
       lics[key]={...(existing||{}),account:key,name:d.name||(existing&&existing.name)||'',email:d.email||(existing&&existing.email)||'',phone:d.phone||(existing&&existing.phone)||'',type,trialStart:(existing&&existing.trialStart)||now,trialEnd,premiumStart:type==='premium'?((existing&&existing.premiumStart)||now):(existing&&existing.premiumStart),premiumEnd,firstSeen:(existing&&existing.firstSeen)||now,lastSeen:(existing&&existing.lastSeen)||0,products:initProds};
       const ok=await saveLics(lics);
@@ -515,7 +521,13 @@ http.createServer(async(req,res)=>{
       const lics=await getLics();const now=Date.now();const key=String(d.account);const ex=lics[key]||{};
       let end,type='premium';
       if(d.lifetime){type='lifetime';end=null;}
-      else if(d.endDate){end=new Date(d.endDate).getTime();}
+      else if(d.endDate){
+        // Suportar dd/mm/yyyy e yyyy-mm-dd
+        let ed=d.endDate;
+        const mBR=ed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if(mBR) ed=mBR[3]+'-'+mBR[2]+'-'+mBR[1];
+        end=new Date(ed+' 23:59:59').getTime();
+      }
       else{const base=(ex&&ex.premiumEnd&&ex.premiumEnd>now)?ex.premiumEnd:now;end=base+(parseInt(d.months)||1)*30*DAY_MS;}
       lics[key]={...(ex||{}),account:key,name:d.name||ex.name||'',type,trialStart:ex.trialStart||now,trialEnd:ex.trialEnd||(now+TRIAL_DAYS*DAY_MS),premiumStart:ex.premiumStart||now,premiumEnd:end,lastSeen:ex.lastSeen||now,firstSeen:ex.firstSeen||now};
       const ok=await saveLics(lics);
