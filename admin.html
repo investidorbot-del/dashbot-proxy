@@ -412,13 +412,15 @@ async function loadServerProds() {
 async function loadUsersTable() {
   try {
     var rj = await api("GET", "/admin/users-json");
-    // Só atualizar se recebeu dados válidos (mesmo que lista vazia)
-    if (rj && Array.isArray(rj.users)) {
+    // SÓ atualizar se recebeu array COM dados
+    // Nunca substituir tabela por array vazio (evita race condition com MongoDB)
+    if (rj && Array.isArray(rj.users) && rj.users.length > 0) {
       renderUsersFromData(rj.users, rj.stats);
-      return;
+    } else if (rj && Array.isArray(rj.users) && rj.users.length === 0 && _usersCache.length === 0) {
+      // Só mostrar vazio se o cache também estiver vazio (primeira carga)
+      renderUsersFromData([], rj.stats);
     }
-    // Fallback silencioso — manter tabela atual se falhar
-    console.warn("loadUsersTable: resposta invalida, mantendo tabela atual");
+    // Se veio vazio mas cache tem dados: manter tabela atual
   } catch(e) { console.warn("loadUsersTable error:", e.message); }
 }
 
@@ -508,8 +510,56 @@ function addProd() {
 
 function editProduct(id) {
   var prods=getProducts(); var p=prods.find(function(x){return x.id===id;}); if(!p) return;
-  var nn=prompt('Nome:',p.name); if(!nn) return;
-  p.name=nn.toUpperCase(); saveProducts(prods); renderProductsTable(); loadDropdowns();
+  // Modal de edição completo
+  var modal=document.getElementById('editProdModal');
+  if(!modal){
+    modal=document.createElement('div'); modal.id='editProdModal';
+    modal.style.cssText='display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background:rgba(13,17,23,.8)';
+    modal.innerHTML=''
+      +'<div style="background:#161b22;margin:8% auto;padding:20px;border:1px solid #30363d;border-radius:10px;width:90%;max-width:460px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">'
+      +'<span style="color:#58a6ff;font-weight:700">Editar Produto</span>'
+      +'<span style="color:#8b949e;font-size:24px;cursor:pointer" onclick="document.getElementById(&quot;editProdModal&quot;).style.display=&quot;none&quot;">&times;</span>'
+      +'</div>'
+      +'<input type="hidden" id="epId">'
+      +'<div class="fg" style="margin-bottom:10px"><label>Nome</label><input id="epName" style="width:100%"></div>'
+      +'<div class="fg" style="margin-bottom:10px"><label>Tipo</label>'
+      +'<select id="epType" style="width:100%">'
+      +'<option value="ea">EA</option>'
+      +'<option value="dashboard">Dashboard</option>'
+      +'<option value="tool">Ferramenta</option>'
+      +'</select></div>'
+      +'<div class="fg" style="margin-bottom:14px"><label>Descrição</label><input id="epDesc" style="width:100%"></div>'
+      +'<div style="display:flex;gap:8px">'
+      +'<button class="btn-sm" onclick="document.getElementById(&quot;editProdModal&quot;).style.display=&quot;none&quot;">Cancelar</button>'
+      +'<button class="btn btn-green" onclick="doEditProduct()">Salvar</button>'
+      +'</div></div>';
+    document.body.appendChild(modal);
+  }
+  document.getElementById('epId').value=id;
+  document.getElementById('epName').value=p.name||'';
+  document.getElementById('epType').value=p.type||'ea';
+  document.getElementById('epDesc').value=p.description||'';
+  modal.style.display='block';
+}
+
+function doEditProduct() {
+  var id=parseInt(document.getElementById('epId').value)||document.getElementById('epId').value;
+  var name=document.getElementById('epName').value.trim();
+  var type=document.getElementById('epType').value;
+  var desc=document.getElementById('epDesc').value.trim();
+  if(!name){ alert('Nome obrigatório'); return; }
+  var prods=getProducts();
+  var i=prods.findIndex(function(x){ return String(x.id)===String(id); });
+  if(i>=0){
+    prods[i].name=name.toUpperCase();
+    prods[i].type=type;
+    prods[i].description=desc;
+    saveProducts(prods);
+    renderProductsTable();
+    loadDropdowns();
+  }
+  document.getElementById('editProdModal').style.display='none';
 }
 
 function toggleProduct(id) {
@@ -554,7 +604,7 @@ async function limparBanco() {
   var r = await api('DELETE','/admin/wipe');
   if (r&&r.ok) {
     showMsg('msg2','Banco limpo! '+(r.accountsRemoved||0)+' conta(s) removida(s).',true);
-    await loadUsersTable();
+    _usersCache=[]; renderUsersFromData([],null);
   } else showMsg('msg2','Erro ao limpar',false);
 }
 
@@ -717,12 +767,11 @@ async function saveUser() {
     }
   }
   showMsg('modalMsg', editId ? 'Atualizado!' : 'Usuario registrado!', true);
-  setTimeout(async function() {
-    closeUserModal();
-    // Recarregar do servidor com delay maior
-    await new Promise(function(res){setTimeout(res,800);});
-    await loadUsersTable();
-  }, 400);
+  closeUserModal();
+  setTimeout(async function(){
+    var rj = await api("GET", "/admin/users-json");
+    if (rj && Array.isArray(rj.users) && rj.users.length > 0) renderUsersFromData(rj.users, rj.stats);
+  }, 1500);
 }
 
 // ── Botoes da tabela gerada pelo servidor ─────────────────────────
@@ -846,7 +895,12 @@ async function doSaveLic() {
   var r=await api('POST','/admin/license',{account:acct,name:name,endDate:endDate});
   if (r&&r.ok) {
     showMsg('msgBonusModal','Ate '+r.expiresStr,true);
-    setTimeout(async function(){ document.getElementById('bonusUserModal').style.display='none'; await loadUsersTable(); },700);
+    document.getElementById('bonusUserModal').style.display='none';
+    // Recarregar com delay para dar tempo ao MongoDB
+    setTimeout(async function(){
+      var rj = await api("GET", "/admin/users-json");
+      if (rj && Array.isArray(rj.users) && rj.users.length > 0) renderUsersFromData(rj.users, rj.stats);
+    }, 1500);
   } else showMsg('msgBonusModal',(r&&r.error)||'Erro',false);
 }
 
@@ -856,7 +910,12 @@ async function doLicLifetime() {
   var r=await api('POST','/admin/license',{account:acct,name:name,lifetime:true});
   if (r&&r.ok) {
     showMsg('msgBonusModal','Licenca Vitalicia aplicada!',true);
-    setTimeout(async function(){ document.getElementById('bonusUserModal').style.display='none'; await loadUsersTable(); },700);
+    document.getElementById('bonusUserModal').style.display='none';
+    // Recarregar com delay para dar tempo ao MongoDB
+    setTimeout(async function(){
+      var rj = await api("GET", "/admin/users-json");
+      if (rj && Array.isArray(rj.users) && rj.users.length > 0) renderUsersFromData(rj.users, rj.stats);
+    }, 1500);
   } else showMsg('msgBonusModal',(r&&r.error)||'Erro',false);
 }
 
@@ -946,7 +1005,11 @@ async function doSaveAddProd() {
   });
   if (r&&r.ok) {
     showMsg('msgProdModal','Produto atribuido!',true);
-    setTimeout(async function(){ document.getElementById('addProdModal').style.display='none'; await loadUsersTable(); },700);
+    document.getElementById('addProdModal').style.display='none';
+    setTimeout(async function(){
+      var rj = await api("GET", "/admin/users-json");
+      if (rj && Array.isArray(rj.users) && rj.users.length > 0) renderUsersFromData(rj.users, rj.stats);
+    }, 1500);
   } else showMsg('msgProdModal',(r&&r.error)||'Erro',false);
 }
 
