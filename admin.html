@@ -424,6 +424,20 @@ async function loadUsersTable() {
   } catch(e) { console.warn("loadUsersTable error:", e.message); }
 }
 
+// Recarrega usuários do servidor SEM esvaziar a tabela em caso de falha
+function safeReloadUsers() {
+  setTimeout(async function() {
+    try {
+      var rj = await api("GET", "/admin/users-json");
+      if (rj && Array.isArray(rj.users) && rj.users.length > 0) {
+        renderUsersFromData(rj.users, rj.stats);
+      }
+      // Se veio vazio: ignorar — manter tabela atual
+    } catch(e) { /* ignorar erros */ }
+  }, 1200);
+}
+
+
 // Cache dos usuários para edição
 var _usersCache = [];
 
@@ -594,7 +608,7 @@ async function inserirManual() {
   showMsg('msg2','Inserido! Expira: '+(r1.expiresStr||expiry),true);
   document.getElementById('mName').value='';
   document.getElementById('mAcc').value='';
-  await loadUsersTable();
+  safeReloadUsers();
 }
 
 // ── Limpar banco ──────────────────────────────────────────────────
@@ -768,10 +782,7 @@ async function saveUser() {
   }
   showMsg('modalMsg', editId ? 'Atualizado!' : 'Usuario registrado!', true);
   closeUserModal();
-  setTimeout(async function(){
-    var rj = await api("GET", "/admin/users-json");
-    if (rj && Array.isArray(rj.users) && rj.users.length > 0) renderUsersFromData(rj.users, rj.stats);
-  }, 1500);
+  safeReloadUsers();
 }
 
 // ── Botoes da tabela gerada pelo servidor ─────────────────────────
@@ -896,11 +907,7 @@ async function doSaveLic() {
   if (r&&r.ok) {
     showMsg('msgBonusModal','Ate '+r.expiresStr,true);
     document.getElementById('bonusUserModal').style.display='none';
-    // Recarregar com delay para dar tempo ao MongoDB
-    setTimeout(async function(){
-      var rj = await api("GET", "/admin/users-json");
-      if (rj && Array.isArray(rj.users) && rj.users.length > 0) renderUsersFromData(rj.users, rj.stats);
-    }, 1500);
+    safeReloadUsers();
   } else showMsg('msgBonusModal',(r&&r.error)||'Erro',false);
 }
 
@@ -911,11 +918,7 @@ async function doLicLifetime() {
   if (r&&r.ok) {
     showMsg('msgBonusModal','Licenca Vitalicia aplicada!',true);
     document.getElementById('bonusUserModal').style.display='none';
-    // Recarregar com delay para dar tempo ao MongoDB
-    setTimeout(async function(){
-      var rj = await api("GET", "/admin/users-json");
-      if (rj && Array.isArray(rj.users) && rj.users.length > 0) renderUsersFromData(rj.users, rj.stats);
-    }, 1500);
+    safeReloadUsers();
   } else showMsg('msgBonusModal',(r&&r.error)||'Erro',false);
 }
 
@@ -1006,10 +1009,7 @@ async function doSaveAddProd() {
   if (r&&r.ok) {
     showMsg('msgProdModal','Produto atribuido!',true);
     document.getElementById('addProdModal').style.display='none';
-    setTimeout(async function(){
-      var rj = await api("GET", "/admin/users-json");
-      if (rj && Array.isArray(rj.users) && rj.users.length > 0) renderUsersFromData(rj.users, rj.stats);
-    }, 1500);
+    safeReloadUsers();
   } else showMsg('msgProdModal',(r&&r.error)||'Erro',false);
 }
 
