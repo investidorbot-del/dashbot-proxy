@@ -450,11 +450,11 @@ function renderUsersFromData(users, stats) {
     html += "<td>" + (u.phone||"—") + "</td>";
     html += "<td>" + prodsHtml + "</td>";
     html += "<td>";
-    html += '<button class="btn-sm" onclick="editUserFull(''+ac+'')" title="Editar">✏️</button> ';
-    html += '<button class="btn-sm" onclick="bonusModal(''+ac+"','"+sn+'')" title="Licença">📅</button> ';
-    html += '<button class="btn-sm btn-red" onclick="revogar(''+ac+'')" title="Revogar">🚫</button> ';
-    html += '<button class="btn-sm" onclick="resetPw(''+ac+'')" title="Reset senha">↺</button> ';
-    html += '<button class="btn-sm btn-red" onclick="delUser(''+ac+'')" title="Excluir">🗑</button>';
+    html += '<button class="btn-sm" onclick="editUserFull(\'' + ac + '\')" title="Editar">✏️</button> ';
+    html += '<button class="btn-sm" onclick="bonusModal(\'' + ac + "','" + sn + '\')" title="Licença">📅</button> ';
+    html += '<button class="btn-sm btn-red" onclick="revogar(\'' + ac + '\')" title="Revogar">🚫</button> ';
+    html += '<button class="btn-sm" onclick="resetPw(\'' + ac + '\')" title="Reset senha">↺</button> ';
+    html += '<button class="btn-sm btn-red" onclick="delUser(\'' + ac + '\')" title="Excluir">🗑</button>';
     html += "</td></tr>";
   }
   tb.innerHTML = html;
