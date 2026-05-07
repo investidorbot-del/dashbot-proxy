@@ -719,10 +719,10 @@ async function saveUser() {
   showMsg('modalMsg', editId ? 'Atualizado!' : 'Usuario registrado!', true);
   setTimeout(async function() {
     closeUserModal();
-    // Aguardar um pouco mais para o servidor processar antes de recarregar
-    await new Promise(function(r){setTimeout(r,300);});
+    // Recarregar do servidor com delay maior
+    await new Promise(function(res){setTimeout(res,800);});
     await loadUsersTable();
-  }, 500);
+  }, 400);
 }
 
 // ── Botoes da tabela gerada pelo servidor ─────────────────────────
@@ -863,8 +863,16 @@ async function doLicLifetime() {
 async function revogar(acct) {
   if (!confirm('Revogar licenca de '+acct+'?')) return;
   var r=await api('DELETE','/admin/license',{account:acct});
-  if (r&&r.ok) { showMsg('msg2','Licenca revogada!',true); await loadUsersTable(); }
-  else showMsg('msg2','Erro ao revogar',false);
+  if (r&&r.ok) {
+    showMsg('msg2','Licenca revogada!',true);
+    // Atualizar cache local
+    for(var i=0;i<_usersCache.length;i++){
+      if(String(_usersCache[i].account)===String(acct)){
+        _usersCache[i].plan='revoked'; _usersCache[i].endDate='—'; break;
+      }
+    }
+    renderUsersFromData(_usersCache,null);
+  } else showMsg('msg2','Erro ao revogar',false);
 }
 
 async function resetPw(acct) {
@@ -878,13 +886,9 @@ async function delUser(acct) {
   var r=await api('DELETE','/admin/user',{account:String(acct)});
   if (r&&r.ok) {
     showMsg('msg2','Removido!',true);
-    document.querySelectorAll('#usersTable tr').forEach(function(tr) {
-      if (tr.innerHTML.indexOf(String(acct))>=0) {
-        tr.style.transition='opacity .3s'; tr.style.opacity='0';
-        setTimeout(function(){tr.remove();},300);
-      }
-    });
-    setTimeout(async function(){ await loadUsersTable(); },1200);
+    // Remover do cache local e re-render
+    _usersCache = _usersCache.filter(function(u){ return String(u.account)!==String(acct); });
+    renderUsersFromData(_usersCache,null);
   } else showMsg('msg2','Erro: '+((r&&r.error)||'falha'),false);
 }
 
