@@ -305,35 +305,68 @@ http.createServer(async(req,res)=>{
     if(token!==PROXY_TOKEN){sendJSON(res,401,{valid:false,error:'Token inválido'});return;}
     if(!account||!productId){sendJSON(res,400,{valid:false,error:'account e product obrigatórios'});return;}
     const lics = await getLics();
-    const now  = Date.now();
+    const now2 = Date.now();
     const catalogProd = (lics._products||[]).find(p=>p.id===productId);
     if(!catalogProd){sendJSON(res,403,{valid:false,error:'Produto "'+productId+'" não encontrado.'});return;}
     if(catalogProd.active===false){sendJSON(res,403,{valid:false,error:'Produto desativado.'});return;}
-    const lic = lics[account];
-    if(!lic){sendJSON(res,403,{valid:false,error:'Conta '+account+' não encontrada. Adquira uma licença em dashbot.investidorbot.com'});return;}
+
+    // Buscar licença e produto:
+    // 1. Tentar pela conta principal (lics[account])
+    // 2. Se não encontrar, varrer todos os usuários que têm este produto
+    //    atribuído para esta conta (accountReal ou accountDemo)
+    let lic = lics[account];
+    let userProd = null;
+
+    function findProd(licObj){
+      return (licObj.products||[]).find(p=>{
+        if(p.id!==productId) return false;
+        if(accountType && p.accountType && p.accountType!==accountType) return false;
+        // Verificar se a conta bate (accountReal, accountDemo, ou conta principal)
+        const pReal=(p.accountReal||'').toString();
+        const pDemo=(p.accountDemo||'').toString();
+        const accStr=String(account);
+        if(pReal||pDemo){
+          if(p.accountType==='real' && pReal && pReal!==accStr) return false;
+          if(p.accountType==='demo' && pDemo && pDemo!==accStr) return false;
+          if(p.accountType!=='real' && p.accountType!=='demo'){
+            if(pReal && pReal!==accStr && pDemo && pDemo!==accStr) return false;
+          }
+        }
+        // Verificar expiração individual do produto
+        if(p.expiry && p.expiry!=='lifetime'){
+          let ed=p.expiry;
+          const mBR=ed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+          if(mBR) ed=mBR[3]+'-'+mBR[2]+'-'+mBR[1];
+          if(new Date(ed+' 23:59:59').getTime()<now2) return false;
+        }
+        return true;
+      });
+    }
+
+    if(lic){
+      userProd = findProd(lic);
+    }
+
+    // Se não encontrou, varrer todos os usuários
+    if(!userProd){
+      for(const k of Object.keys(lics)){
+        if(k.startsWith('_')) continue;
+        const candidate = lics[k];
+        const found = findProd(candidate);
+        if(found){
+          // Verificar se a licença do usuário é válida
+          const cs = checkLic(candidate);
+          if(cs.valid){ lic=candidate; userProd=found; break; }
+        }
+      }
+    }
+
+    if(!lic){
+      sendJSON(res,403,{valid:false,error:'Conta '+account+' não encontrada. Adquira uma licença em www.investidorbot.com'});return;
+    }
     const s = checkLic(lic);
-    if(!s.valid){sendJSON(res,403,{valid:false,error:'Licença expirada.',plan:s.plan});return;}
-    // Buscar produto que corresponde a esta conta e tipo
-    // Suporta múltiplas entradas do mesmo produto (ex: Iron demo conta A + Iron demo conta B)
-    const now2=Date.now();
-    const userProd = (lic.products||[]).find(p=>{
-      if(p.id!==productId) return false;
-      // Verificar tipo de conta se informado
-      if(accountType && p.accountType && p.accountType!==accountType) return false;
-      // Verificar número da conta se informado
-      if(account){
-        const pConta=(p.accountType==='real'?p.accountReal:p.accountDemo)||'';
-        if(pConta && pConta!==String(account)) return false;
-      }
-      // Verificar expiração individual do produto
-      if(p.expiry && p.expiry!=='lifetime'){
-        let ed=p.expiry;
-        const mBR=ed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-        if(mBR) ed=mBR[3]+'-'+mBR[2]+'-'+mBR[1];
-        if(new Date(ed+' 23:59:59').getTime()<now2) return false;
-      }
-      return true;
-    });
+    if(!s.valid){sendJSON(res,403,{valid:false,error:'Licença expirada. Renove em www.investidorbot.com',plan:s.plan});return;}
+
     if(!userProd){
       // Verificar se o produto existe mas expirou
       const anyProd=(lic.products||[]).find(p=>p.id===productId);
