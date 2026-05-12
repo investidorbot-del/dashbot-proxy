@@ -397,11 +397,28 @@ http.createServer(async(req,res)=>{
       }
       return;
     }
+    // -- Validar expiração por produto (userProd.expiry) ----------
+    if(userProd.expiry && userProd.expiry !== 'lifetime') {
+      const prodExp = new Date(userProd.expiry + 'T23:59:59').getTime();
+      if(Date.now() > prodExp) {
+        sendJSON(res,403,{valid:false,error:'Licença expirada. Renove sua licença em www.investidorbot.com',plan:'expired'});
+        return;
+      }
+    }
+
     // Atualizar lastSeen
     lic.lastSeen=now2;
     saveLics(lics).catch(()=>{});
+    // daysLeft: usar o menor entre licença global e expiração do produto
+    let effectiveDaysLeft = s.daysLeft;
+    if(userProd.expiry && userProd.expiry !== 'lifetime') {
+      const prodExp = new Date(userProd.expiry + 'T23:59:59').getTime();
+      const prodDays = Math.ceil((prodExp - Date.now()) / (24*60*60*1000));
+      if(prodDays < effectiveDaysLeft) effectiveDaysLeft = prodDays;
+    }
+
     sendJSON(res,200,{
-      valid:true,plan:s.plan,daysLeft:s.daysLeft,account,productId,
+      valid:true,plan:s.plan,daysLeft:effectiveDaysLeft,account,productId,
       productName:catalogProd.name,
       minLots:parseFloat(userProd.minLots)||parseFloat(catalogProd.minLots)||0,
       maxLots:parseFloat(userProd.maxLots)||parseFloat(catalogProd.maxLots)||0,
