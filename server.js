@@ -564,10 +564,27 @@ http.createServer(async(req,res)=>{
       const lics=await getLics();const key=String(d.account);const now=Date.now();
       if(!lics[key]){lics[key]={account:key,type:'trial',trialStart:now,trialEnd:now+TRIAL_DAYS*DAY_MS,firstSeen:now,lastSeen:0,products:[]};}
       if(!lics[key].products)lics[key].products=[];
-      // Chave composta: productId + accountType (permite mesmo produto em real e demo)
-      const idx=lics[key].products.findIndex(p=>p.id===d.productId&&(p.accountType||'')===(d.accountType||''));
+      // Chave única por linha: productId + accountType + conta (real ou demo)
+      const contaKey=(d.accountType==='real'?d.accountReal:d.accountDemo)||'';
+      const idx=lics[key].products.findIndex(p=>{
+        const pConta=(p.accountType==='real'?p.accountReal:p.accountDemo)||'';
+        return p.id===d.productId&&(p.accountType||'')===(d.accountType||'')&&pConta===contaKey;
+      });
       const entry={id:d.productId,name:d.name||d.productId,assignedAt:now,accountType:d.accountType||'',accountReal:d.accountReal||'',accountDemo:d.accountDemo||'',minLots:parseFloat(d.minLots)||0,maxLots:parseFloat(d.maxLots)||0,instances:parseInt(d.instances)||1};
       if(idx>=0)lics[key].products[idx]=entry;else lics[key].products.push(entry);
+      sendJSON(res,await saveLics(lics)?200:500,{ok:true});return;
+    }
+
+    // Substitui TODA a lista de produtos de uma vez (usado na edição)
+    if(reqPath==='/admin/user-products'&&method==='POST'){
+      const body=await readBody(req);let d;try{d=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+      const lics=await getLics();const key=String(d.account);const now=Date.now();
+      if(!lics[key]){lics[key]={account:key,type:'trial',trialStart:now,trialEnd:now+TRIAL_DAYS*DAY_MS,firstSeen:now,lastSeen:0,products:[]};}
+      lics[key].products=(d.products||[]).map(p=>({
+        id:p.productId,name:p.name||p.productId,assignedAt:now,
+        accountType:p.accountType||'',accountReal:p.accountReal||'',accountDemo:p.accountDemo||'',
+        minLots:parseFloat(p.minLots)||0,maxLots:parseFloat(p.maxLots)||0,instances:parseInt(p.instances)||1
+      }));
       sendJSON(res,await saveLics(lics)?200:500,{ok:true});return;
     }
 
