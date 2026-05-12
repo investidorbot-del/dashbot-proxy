@@ -718,29 +718,36 @@ async function saveUser() {
       var ep = prods[ei].exp;
       if (ep && (!bestExp || ep > bestExp)) bestExp = ep;
     }
+    console.log('[saveUser] bestExp=', bestExp, 'prods=', prods.map(function(p){return p.exp;}));
     if (bestExp) {
       var r1 = await api('POST','/admin/license',{account:editId,name:name,endDate:bestExp});
       if (!r1 || !r1.ok) {
         showMsg('modalMsg','Erro ao salvar licenca: '+(r1?r1.error||JSON.stringify(r1):'sem resposta'),false);
         return;
       }
+    } else {
+      showMsg('modalMsg','Aviso: nenhuma data de expiração preenchida',false);
+      return;
     }
 
-    // 3. Atribuir TODOS os produtos ao mesmo cadastro (conta original)
-    for (var i=0; i<prods.length; i++) {
-      var p = prods[i];
+    // 3. Substituir TODA a lista de produtos de uma vez (preserva todos)
+    var prodList = prods.map(function(p) {
       var sp = _serverProds.find(function(x){return x.id===p.sid;});
-      await api('POST','/admin/user-product',{
-        account:   editId,
-        productId: p.sid,
-        name:      sp ? sp.name : p.sid,
-        accountType:  p.type,
-        accountReal:  p.type==='real' ? p.acct : '',
-        accountDemo:  p.type==='demo' ? p.acct : '',
-        minLots:   p.minL,
-        maxLots:   p.maxL,
-        instances: p.inst
-      });
+      return {
+        productId:   p.sid,
+        name:        sp ? sp.name : p.sid,
+        accountType: p.type,
+        accountReal: p.type==='real' ? p.acct : '',
+        accountDemo: p.type==='demo' ? p.acct : '',
+        minLots:     p.minL,
+        maxLots:     p.maxL,
+        instances:   p.inst
+      };
+    });
+    var rProds = await api('POST','/admin/user-products',{account:editId, products:prodList});
+    if (!rProds || !rProds.ok) {
+      showMsg('modalMsg','Erro ao salvar produtos: '+(rProds?rProds.error||JSON.stringify(rProds):'sem resposta'),false);
+      return;
     }
 
   } else {
