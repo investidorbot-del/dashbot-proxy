@@ -356,20 +356,29 @@ http.createServer(async(req,res)=>{
       userProd = findProd(lic);
     }
 
-    // Se não encontrou, varrer todos os usuários
+    // Se não encontrou pela conta principal, buscar por conta atribuída
     if(!userProd){
       try {
+        const accStr=String(account);
         for(const k of Object.keys(lics)){
-          if(k.startsWith('_')) continue;
-          const candidate = lics[k];
-          if(!candidate || typeof candidate !== 'object') continue;
-          const found = findProd(candidate);
+          if(k.startsWith('_')||k===accStr) continue;
+          const candidate=lics[k];
+          if(!candidate||typeof candidate!=='object') continue;
+          // Verificação rápida: tem algum produto com esta conta?
+          const prods=candidate.products||[];
+          const hasAcc=prods.some(p=>
+            p.id===productId &&
+            (String(p.accountReal||'')=== accStr ||
+             String(p.accountDemo||'')=== accStr)
+          );
+          if(!hasAcc) continue;
+          const found=findProd(candidate);
           if(found){
-            const cs = checkLic(candidate);
-            if(cs.valid){ lic=candidate; userProd=found; break; }
+            const cs=checkLic(candidate);
+            if(cs.valid){lic=candidate;userProd=found;break;}
           }
         }
-      } catch(e) { console.error('[validate-product loop]', e.message); }
+      } catch(e){console.error('[validate-product loop]',e.message);}
     }
 
     if(!lic){
