@@ -872,8 +872,8 @@ function editUserFull(acct) {
   if (prods.length > 0) {
     for (var j=0; j<prods.length; j++) {
       var p = prods[j];
-      // Mapear ID do servidor de volta para ID local
-      var localId = serverIdToLocal(p.id);
+      // p.id já é o serverId (prod_xxx) — buildProdRow usa serverId como value dos options
+      var pServerId = p.id;
       // Pegar a conta correta (real ou demo) do produto
       var pAcct = (p.accountType==='real') ? (p.accountReal||acct) : (p.accountDemo||acct);
       // Expiração individual do produto (p.expiry) convertida para yyyy-mm-dd
@@ -884,7 +884,7 @@ function editUserFull(acct) {
         return d; // já está em ISO
       })(p.expiry || u.endDate || '');
       c.appendChild(buildProdRow({
-        productId:   localId,
+        productId:   pServerId,
         account:     pAcct,
         accountType: p.accountType || 'demo',
         minLots:     p.minLots   || 0,
