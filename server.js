@@ -313,12 +313,36 @@ http.createServer(async(req,res)=>{
     if(!lic){sendJSON(res,403,{valid:false,error:'Conta '+account+' não encontrada. Adquira uma licença em dashbot.investidorbot.com'});return;}
     const s = checkLic(lic);
     if(!s.valid){sendJSON(res,403,{valid:false,error:'Licença expirada.',plan:s.plan});return;}
-    const userProd = (lic.products||[]).find(p=>p.id===productId);
-    if(!userProd){sendJSON(res,403,{valid:false,error:'Produto "'+catalogProd.name+'" não licenciado para esta conta.'});return;}
-    if(accountType&&userProd.accountType&&userProd.accountType!==accountType){
-      const te=userProd.accountType==='real'?'Real':'Demo';
-      const ta=accountType==='real'?'Real':'Demo';
-      sendJSON(res,403,{valid:false,error:'Licença para conta '+te+'. Você usa conta '+ta+'.'});return;
+    // Buscar produto que corresponde a esta conta e tipo
+    // Suporta múltiplas entradas do mesmo produto (ex: Iron demo conta A + Iron demo conta B)
+    const now2=Date.now();
+    const userProd = (lic.products||[]).find(p=>{
+      if(p.id!==productId) return false;
+      // Verificar tipo de conta se informado
+      if(accountType && p.accountType && p.accountType!==accountType) return false;
+      // Verificar número da conta se informado
+      if(account){
+        const pConta=(p.accountType==='real'?p.accountReal:p.accountDemo)||'';
+        if(pConta && pConta!==String(account)) return false;
+      }
+      // Verificar expiração individual do produto
+      if(p.expiry && p.expiry!=='lifetime'){
+        let ed=p.expiry;
+        const mBR=ed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if(mBR) ed=mBR[3]+'-'+mBR[2]+'-'+mBR[1];
+        if(new Date(ed+' 23:59:59').getTime()<now2) return false;
+      }
+      return true;
+    });
+    if(!userProd){
+      // Verificar se o produto existe mas expirou
+      const anyProd=(lic.products||[]).find(p=>p.id===productId);
+      if(anyProd){
+        sendJSON(res,403,{valid:false,error:'Licença do produto "'+catalogProd.name+'" expirada. Renove em www.investidorbot.com'});
+      } else {
+        sendJSON(res,403,{valid:false,error:'Produto "'+catalogProd.name+'" não licenciado para esta conta.'});
+      }
+      return;
     }
     // Atualizar lastSeen
     lic.lastSeen=now;
@@ -331,6 +355,7 @@ http.createServer(async(req,res)=>{
       instances:(userProd.instances!==undefined&&userProd.instances!==null&&userProd.instances!=="")?parseInt(userProd.instances):parseInt(catalogProd.instances)||1,
       accountType:userProd.accountType||'',
       accountReal:userProd.accountReal||'',accountDemo:userProd.accountDemo||'',
+      expiry:userProd.expiry||null,
       premiumEnd:lic.premiumEnd||null,
       message:'Licença ativa — '+catalogProd.name
     });return;
@@ -570,7 +595,7 @@ http.createServer(async(req,res)=>{
         const pConta=(p.accountType==='real'?p.accountReal:p.accountDemo)||'';
         return p.id===d.productId&&(p.accountType||'')===(d.accountType||'')&&pConta===contaKey;
       });
-      const entry={id:d.productId,name:d.name||d.productId,assignedAt:now,accountType:d.accountType||'',accountReal:d.accountReal||'',accountDemo:d.accountDemo||'',minLots:parseFloat(d.minLots)||0,maxLots:parseFloat(d.maxLots)||0,instances:parseInt(d.instances)||1};
+      const entry={id:d.productId,name:d.name||d.productId,assignedAt:now,accountType:d.accountType||'',accountReal:d.accountReal||'',accountDemo:d.accountDemo||'',minLots:parseFloat(d.minLots)||0,maxLots:parseFloat(d.maxLots)||0,instances:parseInt(d.instances)||1,expiry:d.expiry||''};
       if(idx>=0)lics[key].products[idx]=entry;else lics[key].products.push(entry);
       sendJSON(res,await saveLics(lics)?200:500,{ok:true});return;
     }
@@ -583,7 +608,8 @@ http.createServer(async(req,res)=>{
       lics[key].products=(d.products||[]).map(p=>({
         id:p.productId,name:p.name||p.productId,assignedAt:now,
         accountType:p.accountType||'',accountReal:p.accountReal||'',accountDemo:p.accountDemo||'',
-        minLots:parseFloat(p.minLots)||0,maxLots:parseFloat(p.maxLots)||0,instances:parseInt(p.instances)||1
+        minLots:parseFloat(p.minLots)||0,maxLots:parseFloat(p.maxLots)||0,instances:parseInt(p.instances)||1,
+        expiry:p.expiry||''
       }));
       sendJSON(res,await saveLics(lics)?200:500,{ok:true});return;
     }
