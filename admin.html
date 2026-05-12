@@ -393,6 +393,7 @@ function initDB() {
 
 // ── Carregar dados ────────────────────────────────────────────────
 async function loadAll() {
+  var sb=document.getElementById('searchUser'); if(sb) sb.value='';
   await loadServerProds();
   await loadUsersTable();
 }
@@ -741,7 +742,8 @@ async function saveUser() {
         accountDemo: p.type==='demo' ? p.acct : '',
         minLots:     p.minL,
         maxLots:     p.maxL,
-        instances:   p.inst
+        instances:   p.inst,
+        expiry:      p.exp || ''
       };
     });
     var rProds = await api('POST','/admin/user-products',{account:editId, products:prodList});
@@ -821,13 +823,13 @@ function editUserFull(acct) {
       var localId = serverIdToLocal(p.id);
       // Pegar a conta correta (real ou demo) do produto
       var pAcct = (p.accountType==='real') ? (p.accountReal||acct) : (p.accountDemo||acct);
-      // Converter data de expiração para formato yyyy-mm-dd
+      // Expiração individual do produto (p.expiry) convertida para yyyy-mm-dd
       var pExpiry = (function(d){
-        if(!d||d==='—') return '';
+        if(!d||d==='—'||d==='') return '';
         var m=d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
         if(m) return m[3]+'-'+m[2]+'-'+m[1];
-        return d;
-      })(u.endDate);
+        return d; // já está em ISO
+      })(p.expiry || u.endDate || '');
       c.appendChild(buildProdRow({
         productId:   localId,
         account:     pAcct,
