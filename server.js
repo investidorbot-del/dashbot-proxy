@@ -398,7 +398,7 @@ http.createServer(async(req,res)=>{
       return;
     }
     // Atualizar lastSeen
-    lic.lastSeen=now;
+    lic.lastSeen=now2;
     saveLics(lics).catch(()=>{});
     sendJSON(res,200,{
       valid:true,plan:s.plan,daysLeft:s.daysLeft,account,productId,
@@ -514,11 +514,12 @@ http.createServer(async(req,res)=>{
 
     if((reqPath==='/admin'||reqPath==='/admin/')&&method==='GET'){
       const lics=await getLics();const now=Date.now();
-      let rows='';let stats={total:0,premium:0,trial:0,expired:0,active:0};
+      let rows='';let stats={total:0,premium:0,trial:0,expired:0,active:0,lifetime:0};
       for(const[acct,lic]of Object.entries(lics)){
         if(acct.startsWith('_'))continue;
         const s=checkLic(lic);stats.total++;
-        if(s.plan==='premium'||s.plan==='lifetime')stats.premium++;
+        if(s.plan==='lifetime')stats.lifetime=(stats.lifetime||0)+1;
+        else if(s.plan==='premium')stats.premium++;
         else if(s.plan==='trial')stats.trial++;
         else stats.expired++;
         if(lic.lastSeen&&now-lic.lastSeen<7*DAY_MS)stats.active++;
@@ -547,11 +548,12 @@ http.createServer(async(req,res)=>{
 
     if(reqPath==='/admin/users-json'&&method==='GET'){
       const lics=await getLics();const now=Date.now();
-      const users=[];let stats={total:0,premium:0,trial:0,expired:0,active:0};
+      const users=[];let stats={total:0,premium:0,trial:0,expired:0,active:0,lifetime:0};
       for(const[acct,lic]of Object.entries(lics)){
         if(acct.startsWith('_'))continue;
         const s=checkLic(lic);stats.total++;
-        if(s.plan==='premium'||s.plan==='lifetime')stats.premium++;
+        if(s.plan==='lifetime')stats.lifetime=(stats.lifetime||0)+1;
+        else if(s.plan==='premium')stats.premium++;
         else if(s.plan==='trial')stats.trial++;
         else stats.expired++;
         if(lic.lastSeen&&now-lic.lastSeen<7*DAY_MS)stats.active++;
