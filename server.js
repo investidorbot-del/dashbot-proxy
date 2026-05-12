@@ -1,4 +1,13 @@
 'use strict';
+
+// Evitar crash por erros não tratados
+process.on('uncaughtException', err => {
+  console.error('[uncaughtException]', err.message, err.stack);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
+
 const https  = require('https');
 const http   = require('http');
 const crypto = require('crypto');
@@ -83,7 +92,7 @@ const CACHE_TTL = 300000; // 5 minutos
 async function getLics() {
   if (_licsCache && Date.now() - _licsTime < CACHE_TTL) return _licsCache;
   if (!db) return _licsCache || { _products: DEFAULT_PRODUCTS };
-  try {
+  try { // eslint-disable-line
     const docs = await db.collection('licenses').find({}).toArray();
     const lics = { _products: [] };
     docs.forEach(doc => {
@@ -349,16 +358,18 @@ http.createServer(async(req,res)=>{
 
     // Se não encontrou, varrer todos os usuários
     if(!userProd){
-      for(const k of Object.keys(lics)){
-        if(k.startsWith('_')) continue;
-        const candidate = lics[k];
-        const found = findProd(candidate);
-        if(found){
-          // Verificar se a licença do usuário é válida
-          const cs = checkLic(candidate);
-          if(cs.valid){ lic=candidate; userProd=found; break; }
+      try {
+        for(const k of Object.keys(lics)){
+          if(k.startsWith('_')) continue;
+          const candidate = lics[k];
+          if(!candidate || typeof candidate !== 'object') continue;
+          const found = findProd(candidate);
+          if(found){
+            const cs = checkLic(candidate);
+            if(cs.valid){ lic=candidate; userProd=found; break; }
+          }
         }
-      }
+      } catch(e) { console.error('[validate-product loop]', e.message); }
     }
 
     if(!lic){
