@@ -61,10 +61,11 @@ input:focus,select:focus{outline:none;border-color:#388bfd}
 
 <div class="stats">
   <div class="stat"><div class="n" id="total-users">0</div><div class="l">Total</div></div>
-  <div class="stat"><div class="n" style="color:#10b981" id="premium-users">0</div><div class="l">Teste</div></div>
-  <div class="stat"><div class="n" style="color:#3b82f6" id="trial-users">0</div><div class="l">Assinantes</div></div>
-  <div class="stat"><div class="n" style="color:#ef4444" id="expired-users">0</div><div class="l">Vitalícios</div></div>
-  <div class="stat"><div class="n" style="color:#f0c800" id="active-users">0</div><div class="l">Expirados</div></div>
+  <div class="stat"><div class="n" style="color:#10b981" id="premium-users">0</div><div class="l">Assinantes</div></div>
+  <div class="stat"><div class="n" style="color:#3b82f6" id="trial-users">0</div><div class="l">Em Teste</div></div>
+  <div class="stat"><div class="n" style="color:#ef4444" id="expired-users">0</div><div class="l">Expirados</div></div>
+  <div class="stat"><div class="n" style="color:#7c3aed" id="lifetime-users">0</div><div class="l">Vitalícios</div></div>
+  <div class="stat"><div class="n" style="color:#f0c800" id="active-users">0</div><div class="l">Ativos (7d)</div></div>
 </div>
 
 <div class="card">
@@ -323,20 +324,19 @@ function toServerId(localId) {
   // Buscar pelo ID local no localStorage
   var lp = getProducts().find(function(x) { return String(x.id) === s; });
   if (!lp) return null;
-  var name = lp.name.toUpperCase().replace(/[^A-Z0-9]/g,'');
-  // Tentar mapa direto
-  var keys = Object.keys(PROD_MAP);
-  for (var i=0; i<keys.length; i++) {
-    if (keys[i].replace(/[^A-Z0-9]/g,'') === name) return PROD_MAP[keys[i]];
-  }
-  // Tentar serverId guardado no objeto local
+  // Preferir serverId guardado no objeto (carregado do servidor)
   if (lp.serverId) return lp.serverId;
-  // Tentar nos produtos carregados do servidor
+  var name = lp.name.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  // Tentar nos produtos carregados do servidor pelo nome
   var sp = _serverProds.find(function(x) {
     return x.name.toUpperCase().replace(/[^A-Z0-9]/g,'') === name;
   });
   if (sp) return sp.id;
-  // Fallback: usar o ID local direto (servidor vai validar)
+  // Fallback: PROD_MAP estático
+  var keys = Object.keys(PROD_MAP);
+  for (var i=0; i<keys.length; i++) {
+    if (keys[i].replace(/[^A-Z0-9]/g,'') === name) return PROD_MAP[keys[i]];
+  }
   console.warn('[toServerId] nao mapeado:', localId, lp.name);
   return null;
 }
@@ -480,7 +480,7 @@ function renderUsersFromData(users, stats) {
 
 
 function updateStats(stats) {
-  var sm = {total:"total-users",premium:"premium-users",trial:"trial-users",expired:"expired-users",active:"active-users"};
+  var sm = {total:'total-users',premium:'premium-users',trial:'trial-users',expired:'expired-users',lifetime:'lifetime-users',active:'active-users'};
   for (var k in sm) {
     var el = document.getElementById(sm[k]);
     if (el && stats[k] !== undefined) el.textContent = stats[k];
@@ -496,35 +496,53 @@ function renderProductsTable() {
   var prods = getProducts();
   if (!prods.length) { tb.innerHTML='<tr><td colspan="6" class="loading">Nenhum produto</td></tr>'; return; }
   tb.innerHTML = prods.map(function(p) {
-    return '<tr><td>'+p.id+'</td><td>'+p.name+'</td><td>'+p.type+'</td><td>'+(p.description||'-')+'</td><td>'+(p.active?'&#x2705;':'&#x274C;')+'</td><td>'
-      +'<button class="btn-sm btn-blue" onclick="editProduct('+p.id+')">Editar</button> '
-      +'<button class="btn-sm" onclick="toggleProduct('+p.id+')">'+(p.active?'Desativar':'Ativar')+'</button> '
-      +'<button class="btn-sm btn-red" onclick="delProd('+p.id+')">Excluir</button>'
+    var sid = String(p.serverId||p.id);
+    return '<tr><td><code style="font-size:10px">'+sid+'</code></td>'
+      +'<td>'+p.name+'</td>'
+      +'<td>'+p.type+'</td>'
+      +'<td style="color:#8b949e">'+(p.description||'-')+'</td>'
+      +'<td>'+(p.active?'&#x2705;':'&#x274C;')+'</td>'
+      +'<td>'
+      +'<button class="btn-sm btn-blue" onclick="editProduct(\''+sid+'\')">Editar</button> '
+      +'<button class="btn-sm" onclick="toggleProduct(\''+sid+'\')">'+(p.active?'Desativar':'Ativar')+'</button> '
+      +'<button class="btn-sm btn-red" onclick="delProd(\''+sid+'\')">Excluir</button>'
       +'</td></tr>';
   }).join('');
 }
 
 function loadDropdowns() {
   var prods = getProducts();
-  var opts = '<option value="">Selecione...</option>' + prods.filter(function(p){return p.active;}).map(function(p){return '<option value="'+p.id+'">'+p.name+'</option>';}).join('');
+  // Usar serverId como value para que toServerId funcione direto
+  var opts = '<option value="">Selecione...</option>' + prods.filter(function(p){return p.active;}).map(function(p){
+    var val = p.serverId || String(p.id);
+    return '<option value="'+val+'">'+p.name+'</option>';
+  }).join('');
   var el = document.getElementById('mProduct');
   if (el) el.innerHTML = opts;
 }
 
-function addProd() {
+async function addProd() {
   var name=document.getElementById('pName').value.trim();
   var type=document.getElementById('pType').value;
   var desc=document.getElementById('pDesc').value.trim();
   if (!name||!type) { showMsg('msg3','Preencha nome e tipo',false); return; }
-  var prods=getProducts();
-  prods.push({id:Date.now(),name:name.toUpperCase(),type:type,description:desc,active:true});
-  saveProducts(prods); renderProductsTable(); loadDropdowns();
+  // Gerar ID único no padrão do servidor
+  var newId = 'prod_' + Date.now();
+  var serverProd = {id:newId, name:name.toUpperCase(), type:type, description:desc, active:true,
+                    minLots:0, maxLots:0, instances:1};
+  var r = await api('POST','/admin/products', serverProd);
+  if (!r||!r.ok) { showMsg('msg3','Erro ao salvar no servidor: '+(r&&r.error||'falha'),false); return; }
+  // Recarregar lista do servidor para manter sincronizado
+  await loadServerProds();
   showMsg('msg3','Produto adicionado!',true);
   document.getElementById('pName').value=''; document.getElementById('pDesc').value='';
 }
 
 function editProduct(id) {
-  var prods=getProducts(); var p=prods.find(function(x){return x.id===id;}); if(!p) return;
+  var sid = String(id);
+  var prods=getProducts();
+  var p=prods.find(function(x){ return String(x.serverId||x.id)===sid; });
+  if(!p) return;
   // Modal de edição completo
   var modal=document.getElementById('editProdModal');
   if(!modal){
@@ -558,8 +576,8 @@ function editProduct(id) {
   modal.style.display='block';
 }
 
-function doEditProduct() {
-  var id=parseInt(document.getElementById('epId').value)||document.getElementById('epId').value;
+async function doEditProduct() {
+  var id=document.getElementById('epId').value;
   var name=document.getElementById('epName').value.trim();
   var type=document.getElementById('epType').value;
   var desc=document.getElementById('epDesc').value.trim();
@@ -570,6 +588,13 @@ function doEditProduct() {
     prods[i].name=name.toUpperCase();
     prods[i].type=type;
     prods[i].description=desc;
+    // Sincronizar com servidor se tiver serverId
+    var sid = prods[i].serverId || (String(id).startsWith('prod_') ? id : null);
+    if (sid) {
+      await api('POST','/admin/products', {id:sid, name:name.toUpperCase(), type:type, description:desc,
+                                           active:prods[i].active, minLots:prods[i].minLots||0,
+                                           maxLots:prods[i].maxLots||0, instances:prods[i].instances||1});
+    }
     saveProducts(prods);
     renderProductsTable();
     loadDropdowns();
@@ -577,14 +602,34 @@ function doEditProduct() {
   document.getElementById('editProdModal').style.display='none';
 }
 
-function toggleProduct(id) {
-  var prods=getProducts(); var i=prods.findIndex(function(x){return x.id===id;});
-  if(i>=0){prods[i].active=!prods[i].active; saveProducts(prods); renderProductsTable(); loadDropdowns();}
+async function toggleProduct(id) {
+  var prods=getProducts(); var i=prods.findIndex(function(x){return String(x.id)===String(id);});
+  if(i>=0){
+    prods[i].active=!prods[i].active;
+    var sid = prods[i].serverId || (String(id).startsWith('prod_') ? id : null);
+    if (sid) {
+      await api('POST','/admin/products', {id:sid, name:prods[i].name, type:prods[i].type,
+                                           description:prods[i].description||'', active:prods[i].active,
+                                           minLots:prods[i].minLots||0, maxLots:prods[i].maxLots||0,
+                                           instances:prods[i].instances||1});
+    }
+    saveProducts(prods); renderProductsTable(); loadDropdowns();
+  }
 }
 
-function delProd(id) {
+async function delProd(id) {
   if(!confirm('Remover produto?')) return;
-  saveProducts(getProducts().filter(function(p){return p.id!==id;}));
+  var sid = String(id);
+  var prods = getProducts();
+  var p = prods.find(function(x){ return String(x.serverId||x.id)===sid; });
+  // Desativar no servidor ao invés de excluir (evita quebrar licenças existentes)
+  if (p && (p.serverId || sid.startsWith('prod_'))) {
+    var serverSid = p.serverId || sid;
+    await api('POST','/admin/products', {id:serverSid, name:p.name, type:p.type,
+                                         description:p.description||'', active:false,
+                                         minLots:p.minLots||0, maxLots:p.maxLots||0, instances:p.instances||1});
+  }
+  saveProducts(prods.filter(function(x){ return String(x.serverId||x.id)!==sid; }));
   renderProductsTable(); loadDropdowns();
 }
 
@@ -630,7 +675,8 @@ function buildProdRow(data) {
   var defDate=d.toISOString().split('T')[0];
   var prods=getProducts();
   var opts=prods.filter(function(p){return p.active;}).map(function(p){
-    return '<option value="'+p.id+'"'+(p.id==data.productId?' selected':'')+'>'+p.name+'</option>';
+    var val = p.serverId || String(p.id);
+    return '<option value="'+val+'"'+(val==data.productId?' selected':'')+'>'+p.name+'</option>';
   }).join('');
   var div=document.createElement('div'); div.className='product-account-row';
   div.innerHTML=''
@@ -700,7 +746,8 @@ async function saveUser() {
     var inst =parseInt(row.querySelector('.user-instances').value)||1;
     var exp  =row.querySelector('.product-expiry').value;
     if (!locId||!acct) { showMsg('modalMsg','Selecione produto e conta em todas as linhas',false); return; }
-    var sid=toServerId(locId);
+    // locId já é o serverId (prod_xxx) desde que loadDropdowns usa serverId como value
+    var sid = locId.startsWith('prod_') ? locId : toServerId(locId);
     if (!sid) { showMsg('modalMsg','Produto sem mapeamento no servidor',false); return; }
     prods.push({locId:locId,sid:sid,acct:acct,type:type,minL:minL,maxL:maxL,inst:inst,exp:exp});
   }
@@ -759,6 +806,12 @@ async function saveUser() {
     var accts=Object.keys(byAcct);
     for (var a=0; a<accts.length; a++) {
       var acct=accts[a]; var ps=byAcct[acct];
+      // Usar a maior data de expiração entre todos os produtos desta conta
+      var bestAcctExp = '';
+      for (var bi=0; bi<ps.length; bi++) {
+        var ep=ps[bi].exp;
+        if (ep && (!bestAcctExp || ep > bestAcctExp)) bestAcctExp = ep;
+      }
       var serverProds=ps.map(function(p){return {
         productId:p.sid,accountType:p.type,
         accountReal:p.type==='real'?acct:'',accountDemo:p.type==='demo'?acct:'',
@@ -766,7 +819,7 @@ async function saveUser() {
       };});
       var r=await api('POST','/admin/register',{
         account:acct,name:name,email:email,phone:phone,
-        products:serverProds,endDate:ps[0].exp
+        products:serverProds,endDate:bestAcctExp
       });
       if (!r) {
         showMsg('modalMsg','Sem resposta do servidor ao registrar conta '+acct+'.',false);
@@ -777,14 +830,14 @@ async function saveUser() {
         showMsg('modalMsg','Erro na conta '+acct+': '+errDetail,false);
         return;
       }
-      // Atribuir produtos com todos os detalhes
+      // Atribuir produtos com todos os detalhes (incluindo expiry individual)
       for (var j=0; j<ps.length; j++) {
         var p=ps[j];
         var sp=_serverProds.find(function(x){return x.id===p.sid;});
         await api('POST','/admin/user-product',{
           account:acct,productId:p.sid,name:sp?sp.name:p.sid,
           accountType:p.type,accountReal:p.type==='real'?acct:'',accountDemo:p.type==='demo'?acct:'',
-          minLots:p.minL,maxLots:p.maxL,instances:p.inst
+          minLots:p.minL,maxLots:p.maxL,instances:p.inst,expiry:p.exp||''
         });
       }
     }
