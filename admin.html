@@ -812,20 +812,23 @@ function editUserFull(acct) {
       var p = prods[j];
       // Mapear ID do servidor de volta para ID local
       var localId = serverIdToLocal(p.id);
+      // Pegar a conta correta (real ou demo) do produto
+      var pAcct = (p.accountType==='real') ? (p.accountReal||acct) : (p.accountDemo||acct);
+      // Converter data de expiração para formato yyyy-mm-dd
+      var pExpiry = (function(d){
+        if(!d||d==='—') return '';
+        var m=d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if(m) return m[3]+'-'+m[2]+'-'+m[1];
+        return d;
+      })(u.endDate);
       c.appendChild(buildProdRow({
-        productId: localId,
-        account:   acct,
+        productId:   localId,
+        account:     pAcct,
         accountType: p.accountType || 'demo',
-        minLots:   p.minLots   || 0,
-        maxLots:   p.maxLots   || 0,
-        instances: p.instances || 1,
-        expiry:    (function(d){
-          if(!d) return '';
-          // Converter dd/mm/yyyy para yyyy-mm-dd
-          var m=d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-          if(m) return m[3]+'-'+m[2]+'-'+m[1];
-          return d; // já está em ISO
-        })(u.endDate)
+        minLots:     p.minLots   || 0,
+        maxLots:     p.maxLots   || 0,
+        instances:   p.instances || 1,
+        expiry:      pExpiry
       }));
     }
   } else {
@@ -1036,6 +1039,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
   });
   if (!AUTH) { showConfigOverlay(); return; }
+  // Limpar campo de busca ao carregar
+  var sb = document.getElementById('searchUser');
+  if (sb) sb.value = '';
   await loadAll();
 });
 </script>
