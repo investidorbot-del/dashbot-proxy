@@ -328,7 +328,7 @@ http.createServer(async(req,res)=>{
       productName:catalogProd.name,
       minLots:parseFloat(userProd.minLots)||parseFloat(catalogProd.minLots)||0,
       maxLots:parseFloat(userProd.maxLots)||parseFloat(catalogProd.maxLots)||0,
-      instances:parseInt(userProd.instances)||parseInt(catalogProd.instances)||1,
+      instances:(userProd.instances!==undefined&&userProd.instances!==null&&userProd.instances!=="")?parseInt(userProd.instances):parseInt(catalogProd.instances)||1,
       accountType:userProd.accountType||'',
       accountReal:userProd.accountReal||'',accountDemo:userProd.accountDemo||'',
       premiumEnd:lic.premiumEnd||null,
