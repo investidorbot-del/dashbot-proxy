@@ -564,7 +564,8 @@ http.createServer(async(req,res)=>{
       const lics=await getLics();const key=String(d.account);const now=Date.now();
       if(!lics[key]){lics[key]={account:key,type:'trial',trialStart:now,trialEnd:now+TRIAL_DAYS*DAY_MS,firstSeen:now,lastSeen:0,products:[]};}
       if(!lics[key].products)lics[key].products=[];
-      const idx=lics[key].products.findIndex(p=>p.id===d.productId);
+      // Chave composta: productId + accountType (permite mesmo produto em real e demo)
+      const idx=lics[key].products.findIndex(p=>p.id===d.productId&&(p.accountType||'')===(d.accountType||''));
       const entry={id:d.productId,name:d.name||d.productId,assignedAt:now,accountType:d.accountType||'',accountReal:d.accountReal||'',accountDemo:d.accountDemo||'',minLots:parseFloat(d.minLots)||0,maxLots:parseFloat(d.maxLots)||0,instances:parseInt(d.instances)||1};
       if(idx>=0)lics[key].products[idx]=entry;else lics[key].products.push(entry);
       sendJSON(res,await saveLics(lics)?200:500,{ok:true});return;
