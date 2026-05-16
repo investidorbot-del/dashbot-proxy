@@ -38,12 +38,12 @@ input:focus,select:focus{outline:none;border-color:#388bfd}
 
 /* Modal */
 .modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background-color:rgba(13,17,23,0.8)}
-.modal-content{background-color:#161b22;margin:3% auto;padding:20px;border:1px solid #30363d;border-radius:10px;width:96%;max-width:960px}
+.modal-content{background-color:#161b22;margin:3% auto;padding:20px;border:1px solid #30363d;border-radius:10px;width:96%;max-width:960px;max-height:92vh;display:flex;flex-direction:column}
 .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
 .modal-title{color:#58a6ff;font-weight:700}
 .close{color:#8b949e;font-size:24px;font-weight:700;cursor:pointer}
 .close:hover{color:#e6edf3}
-.modal-body{display:flex;flex-direction:column;gap:12px}
+.modal-body{display:flex;flex-direction:column;gap:12px;overflow-y:auto;flex:1;padding-right:4px}
 .account-row{display:flex;gap:8px;align-items:flex-end}
 .remove-account{background:#f85149;color:white;border:none;padding:5px 10px;border-radius:4px;cursor:pointer}
 .loading{color:#8b949e;text-align:center;padding:10px}
@@ -103,7 +103,11 @@ input:focus,select:focus{outline:none;border-color:#388bfd}
 </div>
 
 <div class="card">
-  <div class="card-title">📦 Produtos (EAs, Indicadores, etc.)</div>
+  <div class="card-title" id="prodSectionHeader" onclick="toggleProdSection()" style="cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center">
+    <span>📦 Produtos (EAs, Indicadores, etc.)</span>
+    <span id="prodSectionChevron" style="font-size:12px;color:#8b949e;transition:transform .2s">▼</span>
+  </div>
+  <div id="prodSectionBody" style="display:none">
   <div id="msg3" class="msg"></div>
   <div class="form-row" style="margin-bottom:12px">
     <div class="fg">
@@ -140,6 +144,7 @@ input:focus,select:focus{outline:none;border-color:#388bfd}
       <tr><td colspan="6" class="loading">Carregando produtos...</td></tr>
     </tbody>
   </table>
+  </div><!-- /prodSectionBody -->
 </div>
 
 <div class="card">
@@ -148,7 +153,7 @@ input:focus,select:focus{outline:none;border-color:#388bfd}
     <button class="btn" onclick="openAddUserModal()">+ Adicionar Usuário</button>
     <div class="fg">
       <label>Buscar Usuário</label>
-      <input type="text" id="searchUser" placeholder="Nome, email ou telefone..." oninput="renderUsersTable()" style="width:200px">
+      <input type="text" id="searchUser" placeholder="Nome, email ou telefone..." oninput="renderUsersTable()" style="width:200px" autocomplete="off" value="">
     </div>
   </div>
   <table>
@@ -490,6 +495,14 @@ function updateStats(stats) {
 
 
 // ── Tabela produtos ───────────────────────────────────────────────
+function toggleProdSection() {
+  var body     = document.getElementById('prodSectionBody');
+  var chevron  = document.getElementById('prodSectionChevron');
+  var expanded = body.style.display !== 'none';
+  body.style.display    = expanded ? 'none' : 'block';
+  chevron.style.transform = expanded ? 'rotate(-90deg)' : 'rotate(0deg)';
+}
+
 function renderProductsTable() {
   var tb = document.getElementById('productsTable');
   if (!tb) return;
@@ -1103,7 +1116,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   if (!AUTH) { showConfigOverlay(); return; }
   // Limpar campo de busca ao carregar
   var sb = document.getElementById('searchUser');
-  if (sb) sb.value = '';
+  if (sb) { sb.value = ''; sb.blur(); }
   await loadAll();
 });
 </script>
