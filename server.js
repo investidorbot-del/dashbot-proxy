@@ -63,6 +63,8 @@ async function connectMongo() {
     await db.collection('licenses').createIndex({ account: 1 }, { unique: true });
     await db.collection('auth').createIndex({ key: 1 }, { unique: true });
     await db.collection('cmd').createIndex({ key: 1 }, { unique: true });
+    await db.collection('robots').createIndex({ magic: 1, account: 1 }, { unique: true });
+    await db.collection('robots').createIndex({ lastSeen: 1 });
     console.log('[MongoDB] Conectado com sucesso!');
     mongoError = '';
     await ensureProducts();
@@ -170,25 +172,84 @@ async function saveAuth(data) {
   } catch(e) { console.error('[saveAuth]', e.message); return false; }
 }
 
-// ── CMD (comandos DashBot) ────────────────────────────────────────
-async function getCmd() {
+// ── CMD (comandos DashBot) — roteado por magic number ────────────
+// key = 'magic_<magic>' para comandos direcionados a um robo especifico
+// key = 'account_<account>' para comandos broadcast para todos robos da conta
+async function getCmd(account, magic) {
   if (!db) return { cmd: 'none' };
   try {
-    const doc = await db.collection('cmd').findOne({ key: 'main' });
-    return doc ? { cmd: doc.cmd || 'none' } : { cmd: 'none' };
+    // Prioridade: comando especifico para este magic > broadcast para a conta
+    if (magic) {
+      const specific = await db.collection('cmd').findOne({ key: 'magic_'+magic });
+      if (specific && specific.cmd && specific.cmd !== 'none') {
+        return { cmd: specific.cmd, magic: String(magic) };
+      }
+    }
+    if (account) {
+      const broadcast = await db.collection('cmd').findOne({ key: 'account_'+account });
+      if (broadcast && broadcast.cmd && broadcast.cmd !== 'none') {
+        return { cmd: broadcast.cmd, magic: null };
+      }
+    }
+    return { cmd: 'none' };
   } catch(e) { return { cmd: 'none' }; }
 }
 
-async function saveCmd(payload) {
+async function saveCmd(payload, account, magic) {
   if (!db) return true;
   try {
+    // Salvar com chave especifica (por magic) ou broadcast (por conta)
+    const key = magic ? 'magic_'+magic : (account ? 'account_'+account : 'main');
     await db.collection('cmd').updateOne(
-      { key: 'main' },
-      { $set: { key: 'main', ...payload } },
+      { key },
+      { $set: { key, ...payload, updatedAt: Date.now() } },
       { upsert: true }
     );
     return true;
   } catch(e) { return false; }
+}
+
+// Limpar comando apos o robo confirmar execucao
+async function clearCmd(account, magic) {
+  if (!db) return;
+  try {
+    const ops = [];
+    if (magic)   ops.push(db.collection('cmd').updateOne({ key:'magic_'+magic },   { $set:{ cmd:'none' } }));
+    if (account) ops.push(db.collection('cmd').updateOne({ key:'account_'+account },{ $set:{ cmd:'none' } }));
+    await Promise.all(ops);
+  } catch(e) {}
+}
+
+// ── Long-poll: waiters map ────────────────────────────────────────
+// key = "magic_<magic>" or "account_<account>" → array of {res, timer}
+const cmdWaiters = new Map();
+
+function notifyWaiters(key, payload) {
+  const waiters = cmdWaiters.get(key) || [];
+  cmdWaiters.delete(key);
+  for (const w of waiters) {
+    clearTimeout(w.timer);
+    if (!w.res.writableEnded) sendJSON(w.res, 200, payload);
+  }
+}
+
+function addWaiter(key, res, timeoutMs = 25000) {
+  if (!cmdWaiters.has(key)) cmdWaiters.set(key, []);
+  const timer = setTimeout(() => {
+    const list = cmdWaiters.get(key) || [];
+    const idx = list.findIndex(w => w.res === res);
+    if (idx >= 0) list.splice(idx, 1);
+    if (list.length === 0) cmdWaiters.delete(key);
+    if (!res.writableEnded) sendJSON(res, 200, { cmd: 'none' });
+  }, timeoutMs);
+  cmdWaiters.get(key).push({ res, timer });
+  // Clean up if client disconnects
+  res.on('close', () => {
+    const list = cmdWaiters.get(key) || [];
+    const idx = list.findIndex(w => w.res === res);
+    if (idx >= 0) { clearTimeout(list[idx].timer); list.splice(idx, 1); }
+    if (list.length === 0) cmdWaiters.delete(key);
+  });
 }
 
 // ── Produtos ──────────────────────────────────────────────────────
@@ -456,20 +517,95 @@ http.createServer(async(req,res)=>{
   // ── command (DashBot MQ5) ─────────────────────────────────────
   if(reqPath==='/command'){
     const tok=qs.get('token')||req.headers['x-auth-token']||'';
+    const qAccount=qs.get('account')||'';
+    const qMagic=qs.get('magic')||'';
     if(tok!==PROXY_TOKEN){const sess=await verifySession(tok);if(!sess){sendJSON(res,401,{error:'Não autorizado'});return;}}
-    if(method==='GET'){const c=await getCmd();sendJSON(res,200,c);return;}
+    if(method==='GET'){
+      // Robo consulta com long-poll:
+      // 1. Se ja tem comando pendente → responder imediatamente
+      // 2. Se nao tem → segurar a conexao ate 25s; responder quando chegar comando ou timeout
+      const c = await getCmd(qAccount, qMagic);
+      if (c.cmd && c.cmd !== 'none') {
+        sendJSON(res, 200, c);
+        return;
+      }
+      // Nao ha comando — registrar waiter
+      const waiterKey = qMagic ? 'magic_'+qMagic : 'account_'+qAccount;
+      addWaiter(waiterKey, res, 25000);
+      return; // resposta enviada pelo timeout ou por notifyWaiters()
+    }
     if(method==='POST'){
       const body=await readBody(req);let payload;
       try{payload=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+      // Normalizar comando
       if(payload.cmd){
         const c=payload.cmd.toLowerCase().trim();
         if(['iniciar','play','start','resume'].includes(c)) payload.cmd='iniciar';
         else if(['pausar','pause','stop'].includes(c)) payload.cmd='pausar';
         else if(['zerar','fechar','close','closeall'].includes(c)) payload.cmd='zerar';
+        else if(['none','reset','clear'].includes(c)) payload.cmd='none';
       }
-      const ok=await saveCmd(payload);
-      sendJSON(res,ok?200:500,{ok,cmd:payload.cmd});return;
+      // Se robo esta confirmando execucao (cmd=none), limpar slot
+      if(payload.cmd==='none'){
+        const pMagic=payload.magic||qMagic;
+        const pAccount=payload.account||qAccount;
+        await clearCmd(pAccount,pMagic);
+        sendJSON(res,200,{ok:true,cmd:'none'});return;
+      }
+      // Dashboard enviando novo comando — salvar e notificar robos em espera
+      const targetMagic=payload.magic||qMagic||null;
+      const targetAccount=payload.account||qAccount||null;
+      const ok=await saveCmd(payload,targetAccount,targetMagic);
+      // Notificar imediatamente qualquer robo em long-poll aguardando este comando
+      if(ok){
+        const notifyPayload={cmd:payload.cmd,magic:targetMagic};
+        if(targetMagic) notifyWaiters('magic_'+targetMagic, notifyPayload);
+        else if(targetAccount) notifyWaiters('account_'+targetAccount, notifyPayload);
+      }
+      sendJSON(res,ok?200:500,{ok,cmd:payload.cmd,magic:targetMagic,account:targetAccount});return;
     }
+  }
+
+  // ── telemetry (recebe estado dos robos em tempo real) ────────────
+  if(reqPath==='/telemetry'){
+    const tok=qs.get('token')||req.headers['x-auth-token']||'';
+    if(tok!==PROXY_TOKEN){const sess=await verifySession(tok);if(!sess){sendJSON(res,401,{error:'Não autorizado'});return;}}
+    if(method==='POST'){
+      const body=await readBody(req);let data;
+      try{data=JSON.parse(body);}catch(e){sendJSON(res,400,{error:'JSON inválido'});return;}
+      if(!data.magic){sendJSON(res,400,{error:'magic obrigatório'});return;}
+      if(!db){sendJSON(res,200,{ok:true});return;}
+      try{
+        await db.collection('robots').updateOne(
+          { magic: String(data.magic), account: String(data.account||'') },
+          { $set: { ...data, magic: String(data.magic), account: String(data.account||''), lastSeen: Date.now() } },
+          { upsert: true }
+        );
+        sendJSON(res,200,{ok:true});
+      }catch(e){sendJSON(res,500,{error:e.message});}
+      return;
+    }
+    sendJSON(res,405,{error:'Método não suportado'});return;
+  }
+
+  // ── robots (lista robos ativos para a Dashboard) ──────────────
+  if(reqPath==='/robots'){
+    const tok=qs.get('token')||req.headers['x-auth-token']||'';
+    const sessCheck=await verifySession(tok);
+    if(tok!==PROXY_TOKEN&&!sessCheck){sendJSON(res,401,{error:'Não autorizado'});return;}
+    if(method==='GET'){
+      if(!db){sendJSON(res,200,{robots:[]});return;}
+      try{
+        const qAccount=qs.get('account')||'';
+        const cutoff=Date.now()-30000; // robos vistos nos ultimos 30s
+        const filter={lastSeen:{$gt:cutoff}};
+        if(qAccount) filter.account=String(qAccount);
+        const docs=await db.collection('robots').find(filter).toArray();
+        sendJSON(res,200,{robots:docs.map(d=>{delete d._id;return d;})});
+      }catch(e){sendJSON(res,500,{error:e.message});}
+      return;
+    }
+    sendJSON(res,405,{error:'Método não suportado'});return;
   }
 
   // ── auth/* ────────────────────────────────────────────────────
